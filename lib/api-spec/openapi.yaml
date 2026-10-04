@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: maritime
+    description: Fleet, fuel, and voyage optimization operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /maritime/catalog:
+    get:
+      operationId: getMaritimeCatalog
+      tags: [maritime]
+      summary: Get supported vessel classes and fuel reference properties
+      responses:
+        "200":
+          description: Maritime reference catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaritimeCatalog"
+  /maritime/vessels:
+    get:
+      operationId: listVessels
+      tags: [maritime]
+      summary: List saved vessel profiles
+      responses:
+        "200":
+          description: Saved vessel profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vessel"
+    post:
+      operationId: createVessel
+      tags: [maritime]
+      summary: Create a vessel profile with source provenance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VesselInput"
+      responses:
+        "201":
+          description: Created vessel profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vessel"
+        "400":
+          description: Invalid vessel profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /maritime/vessels/{vesselId}:
+    put:
+      operationId: updateVessel
+      tags: [maritime]
+      summary: Update a saved vessel profile
+      parameters:
+        - name: vesselId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VesselInput"
+      responses:
+        "200":
+          description: Updated vessel profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vessel"
+        "404":
+          description: Vessel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteVessel
+      tags: [maritime]
+      summary: Delete a saved vessel profile
+      parameters:
+        - name: vesselId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Delete result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+  /maritime/optimize:
+    post:
+      operationId: optimizeVoyage
+      tags: [maritime]
+      summary: Optimize and benchmark a single-vessel voyage scenario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OptimizeInput"
+      responses:
+        "200":
+          description: Optimization and benchmark results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizationResponse"
+        "400":
+          description: Invalid or infeasible scenario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Selected vessel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +163,458 @@ components:
           type: string
       required:
         - status
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    DeleteResult:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+      required: [deleted]
+    FuelProfile:
+      type: object
+      properties:
+        fuelId:
+          type: string
+        name:
+          type: string
+        lowerHeatingValueMjKg:
+          type: ["number", "null"]
+        tankToWakeKgCo2PerKg:
+          type: ["number", "null"]
+        volumetricStoragePenalty:
+          type: ["number", "null"]
+        methaneSlipInputRequired:
+          type: boolean
+        reference:
+          type: string
+      required:
+        - fuelId
+        - name
+        - lowerHeatingValueMjKg
+        - tankToWakeKgCo2PerKg
+        - volumetricStoragePenalty
+        - methaneSlipInputRequired
+        - reference
+    MaritimeCatalog:
+      type: object
+      properties:
+        vesselClasses:
+          type: array
+          items:
+            type: string
+        fuels:
+          type: array
+          items:
+            $ref: "#/components/schemas/FuelProfile"
+        methodology:
+          type: array
+          items:
+            type: string
+        provenanceNotice:
+          type: string
+      required: [vesselClasses, fuels, methodology, provenanceNotice]
+    SfocPoint:
+      type: object
+      properties:
+        loadFraction:
+          type: number
+          minimum: 0.1
+          maximum: 1
+        gramsPerKwh:
+          type: number
+          exclusiveMinimum: 0
+      required: [loadFraction, gramsPerKwh]
+    VesselInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        vesselClass:
+          type: string
+          enum: [ulcs, capesize, suezmax, feeder, other]
+        deadweightTonnes:
+          type: number
+          exclusiveMinimum: 0
+        lightshipTonnes:
+          type: number
+          exclusiveMinimum: 0
+        cargoCapacityTonnes:
+          type: number
+          exclusiveMinimum: 0
+        designServiceSpeedKnots:
+          type: number
+          exclusiveMinimum: 0
+        maxSpeedKnots:
+          type: number
+          exclusiveMinimum: 0
+        maxEnginePowerKw:
+          type: number
+          exclusiveMinimum: 0
+        engineEfficiency:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1
+        sfocCurve:
+          type: array
+          minItems: 2
+          items:
+            $ref: "#/components/schemas/SfocPoint"
+        blockCoefficient:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1
+        lengthOverallM:
+          type: number
+          exclusiveMinimum: 0
+        beamM:
+          type: number
+          exclusiveMinimum: 0
+        designDraftM:
+          type: number
+          exclusiveMinimum: 0
+        fuelCompatibility:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        fuelTankVolumesM3:
+          type: object
+          additionalProperties:
+            type: number
+            minimum: 0
+        alternativeFuelWeightPenaltyTonnes:
+          type: object
+          additionalProperties:
+            type: number
+            minimum: 0
+        windageAreaM2:
+          type: number
+          exclusiveMinimum: 0
+        windDragCoefficient:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 2
+        sourceName:
+          type: string
+          minLength: 2
+          maxLength: 200
+        sourceUrl:
+          type: string
+          format: uri
+      required:
+        - name
+        - vesselClass
+        - deadweightTonnes
+        - lightshipTonnes
+        - cargoCapacityTonnes
+        - designServiceSpeedKnots
+        - maxSpeedKnots
+        - maxEnginePowerKw
+        - engineEfficiency
+        - sfocCurve
+        - blockCoefficient
+        - lengthOverallM
+        - beamM
+        - designDraftM
+        - fuelCompatibility
+        - fuelTankVolumesM3
+        - alternativeFuelWeightPenaltyTonnes
+        - windageAreaM2
+        - windDragCoefficient
+        - sourceName
+        - sourceUrl
+    Vessel:
+      allOf:
+        - $ref: "#/components/schemas/VesselInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+          required: [id, createdAt, updatedAt]
+    FuelScenarioInput:
+      type: object
+      properties:
+        fuelId:
+          type: string
+        bunkerPriceUsdPerTonne:
+          type: number
+          minimum: 0
+        densityKgPerM3:
+          type: number
+          exclusiveMinimum: 0
+        wellToTankKgCo2ePerKg:
+          type: number
+          minimum: -10
+        nonCo2TankToWakeKgCo2ePerKg:
+          type: number
+          minimum: 0
+        methaneSlipPercent:
+          type: ["number", "null"]
+          minimum: 0
+          maximum: 100
+        bunkerPriceSource:
+          type: string
+          minLength: 2
+          maxLength: 300
+        bunkerPriceAsOfDate:
+          type: string
+          format: date
+        wellToTankSource:
+          type: string
+          minLength: 2
+          maxLength: 300
+        availableAtBunkeringPort:
+          type: boolean
+      required:
+        - fuelId
+        - bunkerPriceUsdPerTonne
+        - densityKgPerM3
+        - wellToTankKgCo2ePerKg
+        - nonCo2TankToWakeKgCo2ePerKg
+        - methaneSlipPercent
+        - bunkerPriceSource
+        - bunkerPriceAsOfDate
+        - wellToTankSource
+        - availableAtBunkeringPort
+    OptimizeInput:
+      type: object
+      properties:
+        vesselId:
+          type: string
+          format: uuid
+        distanceNm:
+          type: number
+          exclusiveMinimum: 0
+        cargoTonnes:
+          type: number
+          exclusiveMinimum: 0
+        actualDraftM:
+          type: number
+          exclusiveMinimum: 0
+        minSpeedKnots:
+          type: number
+          exclusiveMinimum: 0
+        maxSpeedKnots:
+          type: number
+          exclusiveMinimum: 0
+        speedStepKnots:
+          type: number
+          exclusiveMinimum: 0
+        windBeaufort:
+          type: integer
+          minimum: 0
+          maximum: 12
+        waveHeightM:
+          type: number
+          minimum: 0
+        waveRelativeDirectionDeg:
+          type: number
+          minimum: 0
+          maximum: 180
+        currentAlongTrackKnots:
+          type: number
+          minimum: -10
+          maximum: 10
+        berthWindowStartHour:
+          type: number
+          minimum: 0
+        berthWindowEndHour:
+          type: number
+          exclusiveMinimum: 0
+        carbonPriceUsdPerTonne:
+          type: number
+          minimum: 0
+        carbonPriceSource:
+          type: string
+          minLength: 2
+          maxLength: 300
+        portFeesUsd:
+          type: number
+          minimum: 0
+        portFeesSource:
+          type: string
+          minLength: 2
+          maxLength: 300
+        objectiveWeights:
+          $ref: "#/components/schemas/ObjectiveWeights"
+        fuels:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/FuelScenarioInput"
+        evaluationBudget:
+          type: integer
+          minimum: 64
+          maximum: 4096
+        randomSeed:
+          type: integer
+          minimum: 0
+          maximum: 2147483647
+      required:
+        - vesselId
+        - distanceNm
+        - cargoTonnes
+        - actualDraftM
+        - minSpeedKnots
+        - maxSpeedKnots
+        - speedStepKnots
+        - windBeaufort
+        - waveHeightM
+        - waveRelativeDirectionDeg
+        - currentAlongTrackKnots
+        - berthWindowStartHour
+        - berthWindowEndHour
+        - carbonPriceUsdPerTonne
+        - carbonPriceSource
+        - portFeesUsd
+        - portFeesSource
+        - objectiveWeights
+        - fuels
+        - evaluationBudget
+        - randomSeed
+    ObjectiveWeights:
+      type: object
+      properties:
+        cost:
+          type: number
+          minimum: 0
+          maximum: 1
+        emissions:
+          type: number
+          minimum: 0
+          maximum: 1
+        duration:
+          type: number
+          minimum: 0
+          maximum: 1
+      required: [cost, emissions, duration]
+    ConvergencePoint:
+      type: object
+      properties:
+        iteration:
+          type: integer
+        bestCostUsd:
+          type: number
+        bestWellToWakeKgCo2e:
+          type: number
+        bestDurationHours:
+          type: number
+      required: [iteration, bestCostUsd, bestWellToWakeKgCo2e, bestDurationHours]
+    ParetoPoint:
+      type: object
+      properties:
+        fuelId:
+          type: string
+        fuelName:
+          type: string
+        speedKnots:
+          type: number
+        fuelMassTonnes:
+          type: number
+        fuelVolumeM3:
+          type: number
+        totalCostUsd:
+          type: number
+        wellToWakeKgCo2e:
+          type: number
+        tankToWakeKgCo2e:
+          type: number
+        durationHours:
+          type: number
+        engineLoadFraction:
+          type: number
+        feasible:
+          type: boolean
+      required:
+        - fuelId
+        - fuelName
+        - speedKnots
+        - fuelMassTonnes
+        - fuelVolumeM3
+        - totalCostUsd
+        - wellToWakeKgCo2e
+        - tankToWakeKgCo2e
+        - durationHours
+        - engineLoadFraction
+        - feasible
+    BenchmarkResult:
+      type: object
+      properties:
+        algorithm:
+          type: string
+        runtimeSeconds:
+          type: number
+        convergenceIterations:
+          type: integer
+        evaluations:
+          type: integer
+        paretoHypervolume:
+          type: number
+        selectedPlan:
+          $ref: "#/components/schemas/ParetoPoint"
+        convergence:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConvergencePoint"
+        paretoFront:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParetoPoint"
+      required:
+        - algorithm
+        - runtimeSeconds
+        - convergenceIterations
+        - evaluations
+        - paretoHypervolume
+        - selectedPlan
+        - convergence
+        - paretoFront
+    OptimizationResponse:
+      type: object
+      properties:
+        vessel:
+          $ref: "#/components/schemas/Vessel"
+        recommendedPlan:
+          $ref: "#/components/schemas/ParetoPoint"
+        benchmarkResults:
+          type: array
+          items:
+            $ref: "#/components/schemas/BenchmarkResult"
+        paretoFront:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParetoPoint"
+        physics:
+          type: object
+          properties:
+            basePowerKw:
+              type: number
+            windAddedPowerKw:
+              type: number
+            waveAddedPowerKw:
+              type: number
+            currentAdjustedSpeedKnots:
+              type: number
+            draftPowerFactor:
+              type: number
+          required: [basePowerKw, windAddedPowerKw, waveAddedPowerKw, currentAdjustedSpeedKnots, draftPowerFactor]
+        warnings:
+          type: array
+          items:
+            type: string
+      required: [vessel, recommendedPlan, benchmarkResults, paretoFront, physics, warnings]
 

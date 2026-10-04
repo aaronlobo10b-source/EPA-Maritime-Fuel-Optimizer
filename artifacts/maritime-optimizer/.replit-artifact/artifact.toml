@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Maritime Fuel Optimizer"
+description = "A maritime voyage planning dashboard that models ship fuel consumption, compares multi-fuel emissions and operating costs, and benchmarks optimization strategies with transparent assumptions."
+version = "1.0.0"
+id = "artifacts/maritime-optimizer"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24909
+
+[services.development]
+run = "pnpm --filter @workspace/maritime-optimizer run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/maritime-optimizer", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/maritime-optimizer/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24909"
+BASE_PATH = "/"
