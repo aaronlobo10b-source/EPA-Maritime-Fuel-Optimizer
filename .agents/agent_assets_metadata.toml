@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "yOmKuxgc16rGRpFXRKayw"
+uri = "file://exports/maritime-fuel-optimizer-changes.zip"
+type = "unspecified"
+title = "Maritime Fuel Optimizer changes"
+description = "ZIP containing 105 added or modified project files, a manifest, and a patch from the original baseline. Excludes uploaded source materials and build outputs."
+logical_id = "3edbbb80-8c0a-4da5-bc77-2a3c807d4482"
+content_hash = "sha256:7dd9c0024b29d3b96967547c089284120afff931c66d447cb8620711e2077c1e"
+size = 264273
+mtime_ms = 1791158723746
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:d809a2fd-63b5-4a4c-b35a-430cd53bbaab/3edbbb80-8c0a-4da5-bc77-2a3c807d4482/1e6eb412-857e-4686-adb8-cd8528e33971"
+storage_version_token = "1791158734349218"
+content_type = "application/octet-stream"
