@@ -127,7 +127,7 @@ export type Vessel = VesselInput & {
 export interface FuelScenarioInput {
   fuelId: string;
   /** @minimum 0 */
-  bunkerPriceUsdPerTonne: number;
+  bunkerPriceInrPerTonne: number;
   /** @exclusiveMinimum 0 */
   densityKgPerM3: number;
   /** @minimum -10 */
@@ -154,6 +154,14 @@ export interface FuelScenarioInput {
   availableAtBunkeringPort: boolean;
 }
 
+export type OptimizeInputFuelEstimator = typeof OptimizeInputFuelEstimator[keyof typeof OptimizeInputFuelEstimator];
+
+
+export const OptimizeInputFuelEstimator = {
+  physics_baseline: 'physics_baseline',
+  fuelcast_ml: 'fuelcast_ml',
+} as const;
+
 export interface ObjectiveWeights {
   /**
      * @minimum 0
@@ -170,6 +178,21 @@ export interface ObjectiveWeights {
      * @maximum 1
      */
   duration: number;
+}
+
+export interface FuelCastScenarioFeatures {
+  /** @exclusiveMinimum 0 */
+  referenceSpeedKnots: number;
+  /** @exclusiveMinimum 0 */
+  shipSpeedOverGroundAtReferenceSpeed: number;
+  /** @exclusiveMinimum 0 */
+  totalShaftPowerAtReferenceSpeed: number;
+  /** @minimum 0 */
+  windSpeed10m: number;
+  /** @minimum 0 */
+  waveHeight: number;
+  /** @minimum 0 */
+  oceanCurrentVelocity: number;
 }
 
 export interface OptimizeInput {
@@ -208,14 +231,14 @@ export interface OptimizeInput {
   /** @exclusiveMinimum 0 */
   berthWindowEndHour: number;
   /** @minimum 0 */
-  carbonPriceUsdPerTonne: number;
+  carbonPriceInrPerTonne: number;
   /**
      * @minLength 2
      * @maxLength 300
      */
   carbonPriceSource: string;
   /** @minimum 0 */
-  portFeesUsd: number;
+  portFeesInr: number;
   /**
      * @minLength 2
      * @maxLength 300
@@ -234,11 +257,72 @@ export interface OptimizeInput {
      * @maximum 2147483647
      */
   randomSeed: number;
+  fuelEstimator?: OptimizeInputFuelEstimator;
+  fuelCastFeatures?: FuelCastScenarioFeatures;
+}
+
+export interface FuelCastMetrics {
+  observations: number;
+  maeKgPerSecond: number;
+  rmseKgPerSecond: number;
+  r2: number;
+  /** @nullable */
+  mapePercent: number | null;
+  /** @nullable */
+  mapeUnavailableReason: string | null;
+}
+
+export type FuelCastTimeBlock = FuelCastMetrics & {
+  vessel: string;
+  sourceOrderStart: number;
+  sourceOrderEnd: number;
+};
+
+export type FuelCastValidationUnseenVesselFoldsItem = {
+  heldOutVessel: string;
+  trainingObservations: number;
+  testObservations: number;
+  maeKgPerSecond: number;
+  rmseKgPerSecond: number;
+  r2: number;
+  /** @nullable */
+  mapePercent: number | null;
+  /** @nullable */
+  mapeUnavailableReason: string | null;
+};
+
+export interface FuelCastValidation {
+  available: boolean;
+  modelAvailable: boolean;
+  dataset: string;
+  target: string;
+  targetUnit: string;
+  /** @nullable */
+  observationsLoaded: number | null;
+  /** @nullable */
+  observationsUsable: number | null;
+  /** @nullable */
+  vesselCount: number | null;
+  vessels: string[];
+  features: string[];
+  /** @nullable */
+  model: string | null;
+  /** @nullable */
+  trainingObservations: number | null;
+  /** @nullable */
+  testObservations: number | null;
+  timeBlockMetrics: FuelCastMetrics;
+  timeBlocks: FuelCastTimeBlock[];
+  unseenVesselMetrics: FuelCastMetrics;
+  unseenVesselFolds: FuelCastValidationUnseenVesselFoldsItem[];
+  physicsBaselineStatus: string;
+  physicsBaselineReason: string;
+  limitations: string[];
 }
 
 export interface ConvergencePoint {
   iteration: number;
-  bestCostUsd: number;
+  bestCostInr: number;
   bestWellToWakeKgCo2e: number;
   bestDurationHours: number;
 }
@@ -249,7 +333,9 @@ export interface ParetoPoint {
   speedKnots: number;
   fuelMassTonnes: number;
   fuelVolumeM3: number;
-  totalCostUsd: number;
+  totalCostInr: number;
+  fuelRateKgPerSecond: number;
+  fuelEstimator: string;
   wellToWakeKgCo2e: number;
   tankToWakeKgCo2e: number;
   durationHours: number;

@@ -37,6 +37,67 @@ export const GetMaritimeCatalogResponse = zod.object({
 
 
 /**
+ * @summary Get local FuelCast measured-data validation results
+ */
+export const GetFuelCastValidationResponse = zod.object({
+  "available": zod.boolean(),
+  "modelAvailable": zod.boolean(),
+  "dataset": zod.string(),
+  "target": zod.string(),
+  "targetUnit": zod.string(),
+  "observationsLoaded": zod.number().int().nullable(),
+  "observationsUsable": zod.number().int().nullable(),
+  "vesselCount": zod.number().int().nullable(),
+  "vessels": zod.array(zod.string()),
+  "features": zod.array(zod.string()),
+  "model": zod.string().nullable(),
+  "trainingObservations": zod.number().int().nullable(),
+  "testObservations": zod.number().int().nullable(),
+  "timeBlockMetrics": zod.object({
+  "observations": zod.number().int(),
+  "maeKgPerSecond": zod.number(),
+  "rmseKgPerSecond": zod.number(),
+  "r2": zod.number(),
+  "mapePercent": zod.number().nullable(),
+  "mapeUnavailableReason": zod.string().nullable()
+}),
+  "timeBlocks": zod.array(zod.object({
+  "observations": zod.number().int(),
+  "maeKgPerSecond": zod.number(),
+  "rmseKgPerSecond": zod.number(),
+  "r2": zod.number(),
+  "mapePercent": zod.number().nullable(),
+  "mapeUnavailableReason": zod.string().nullable()
+}).and(zod.object({
+  "vessel": zod.string(),
+  "sourceOrderStart": zod.number().int(),
+  "sourceOrderEnd": zod.number().int()
+}))),
+  "unseenVesselMetrics": zod.object({
+  "observations": zod.number().int(),
+  "maeKgPerSecond": zod.number(),
+  "rmseKgPerSecond": zod.number(),
+  "r2": zod.number(),
+  "mapePercent": zod.number().nullable(),
+  "mapeUnavailableReason": zod.string().nullable()
+}),
+  "unseenVesselFolds": zod.array(zod.object({
+  "heldOutVessel": zod.string(),
+  "trainingObservations": zod.number().int(),
+  "testObservations": zod.number().int(),
+  "maeKgPerSecond": zod.number(),
+  "rmseKgPerSecond": zod.number(),
+  "r2": zod.number(),
+  "mapePercent": zod.number().nullable(),
+  "mapeUnavailableReason": zod.string().nullable()
+})),
+  "physicsBaselineStatus": zod.string(),
+  "physicsBaselineReason": zod.string(),
+  "limitations": zod.array(zod.string())
+})
+
+
+/**
  * @summary List saved vessel profiles
  */
 export const listVesselsResponseOneNameMax = 120;
@@ -482,12 +543,12 @@ export const optimizeVoyageBodyBerthWindowStartHourMin = 0;
 
 export const optimizeVoyageBodyBerthWindowEndHourExclusiveMin = 0;
 
-export const optimizeVoyageBodyCarbonPriceUsdPerTonneMin = 0;
+export const optimizeVoyageBodyCarbonPriceInrPerTonneMin = 0;
 
 export const optimizeVoyageBodyCarbonPriceSourceMin = 2;
 export const optimizeVoyageBodyCarbonPriceSourceMax = 300;
 
-export const optimizeVoyageBodyPortFeesUsdMin = 0;
+export const optimizeVoyageBodyPortFeesInrMin = 0;
 
 export const optimizeVoyageBodyPortFeesSourceMin = 2;
 export const optimizeVoyageBodyPortFeesSourceMax = 300;
@@ -501,7 +562,7 @@ export const optimizeVoyageBodyObjectiveWeightsEmissionsMax = 1;
 export const optimizeVoyageBodyObjectiveWeightsDurationMin = 0;
 export const optimizeVoyageBodyObjectiveWeightsDurationMax = 1;
 
-export const optimizeVoyageBodyFuelsItemBunkerPriceUsdPerTonneMin = 0;
+export const optimizeVoyageBodyFuelsItemBunkerPriceInrPerTonneMin = 0;
 
 export const optimizeVoyageBodyFuelsItemDensityKgPerM3ExclusiveMin = 0;
 
@@ -525,6 +586,19 @@ export const optimizeVoyageBodyEvaluationBudgetMax = 4096;
 export const optimizeVoyageBodyRandomSeedMin = 0;
 export const optimizeVoyageBodyRandomSeedMax = 2147483647;
 
+export const optimizeVoyageBodyFuelEstimatorDefault = `physics_baseline`;
+export const optimizeVoyageBodyFuelCastFeaturesReferenceSpeedKnotsExclusiveMin = 0;
+
+export const optimizeVoyageBodyFuelCastFeaturesShipSpeedOverGroundAtReferenceSpeedExclusiveMin = 0;
+
+export const optimizeVoyageBodyFuelCastFeaturesTotalShaftPowerAtReferenceSpeedExclusiveMin = 0;
+
+export const optimizeVoyageBodyFuelCastFeaturesWindSpeed10mMin = 0;
+
+export const optimizeVoyageBodyFuelCastFeaturesWaveHeightMin = 0;
+
+export const optimizeVoyageBodyFuelCastFeaturesOceanCurrentVelocityMin = 0;
+
 
 
 export const OptimizeVoyageBody = zod.object({
@@ -541,9 +615,9 @@ export const OptimizeVoyageBody = zod.object({
   "currentAlongTrackKnots": zod.number().min(optimizeVoyageBodyCurrentAlongTrackKnotsMin).max(optimizeVoyageBodyCurrentAlongTrackKnotsMax),
   "berthWindowStartHour": zod.number().min(optimizeVoyageBodyBerthWindowStartHourMin),
   "berthWindowEndHour": zod.number().gt(optimizeVoyageBodyBerthWindowEndHourExclusiveMin),
-  "carbonPriceUsdPerTonne": zod.number().min(optimizeVoyageBodyCarbonPriceUsdPerTonneMin),
+  "carbonPriceInrPerTonne": zod.number().min(optimizeVoyageBodyCarbonPriceInrPerTonneMin),
   "carbonPriceSource": zod.string().min(optimizeVoyageBodyCarbonPriceSourceMin).max(optimizeVoyageBodyCarbonPriceSourceMax),
-  "portFeesUsd": zod.number().min(optimizeVoyageBodyPortFeesUsdMin),
+  "portFeesInr": zod.number().min(optimizeVoyageBodyPortFeesInrMin),
   "portFeesSource": zod.string().min(optimizeVoyageBodyPortFeesSourceMin).max(optimizeVoyageBodyPortFeesSourceMax),
   "objectiveWeights": zod.object({
   "cost": zod.number().min(optimizeVoyageBodyObjectiveWeightsCostMin).max(optimizeVoyageBodyObjectiveWeightsCostMax),
@@ -552,7 +626,7 @@ export const OptimizeVoyageBody = zod.object({
 }),
   "fuels": zod.array(zod.object({
   "fuelId": zod.string(),
-  "bunkerPriceUsdPerTonne": zod.number().min(optimizeVoyageBodyFuelsItemBunkerPriceUsdPerTonneMin),
+  "bunkerPriceInrPerTonne": zod.number().min(optimizeVoyageBodyFuelsItemBunkerPriceInrPerTonneMin),
   "densityKgPerM3": zod.number().gt(optimizeVoyageBodyFuelsItemDensityKgPerM3ExclusiveMin),
   "wellToTankKgCo2ePerKg": zod.number().min(optimizeVoyageBodyFuelsItemWellToTankKgCo2ePerKgMin),
   "nonCo2TankToWakeKgCo2ePerKg": zod.number().min(optimizeVoyageBodyFuelsItemNonCo2TankToWakeKgCo2ePerKgMin),
@@ -563,7 +637,16 @@ export const OptimizeVoyageBody = zod.object({
   "availableAtBunkeringPort": zod.boolean()
 })).min(1),
   "evaluationBudget": zod.number().int().min(optimizeVoyageBodyEvaluationBudgetMin).max(optimizeVoyageBodyEvaluationBudgetMax),
-  "randomSeed": zod.number().int().min(optimizeVoyageBodyRandomSeedMin).max(optimizeVoyageBodyRandomSeedMax)
+  "randomSeed": zod.number().int().min(optimizeVoyageBodyRandomSeedMin).max(optimizeVoyageBodyRandomSeedMax),
+  "fuelEstimator": zod.enum(['physics_baseline', 'fuelcast_ml']).default(optimizeVoyageBodyFuelEstimatorDefault),
+  "fuelCastFeatures": zod.object({
+  "referenceSpeedKnots": zod.number().gt(optimizeVoyageBodyFuelCastFeaturesReferenceSpeedKnotsExclusiveMin),
+  "shipSpeedOverGroundAtReferenceSpeed": zod.number().gt(optimizeVoyageBodyFuelCastFeaturesShipSpeedOverGroundAtReferenceSpeedExclusiveMin),
+  "totalShaftPowerAtReferenceSpeed": zod.number().gt(optimizeVoyageBodyFuelCastFeaturesTotalShaftPowerAtReferenceSpeedExclusiveMin),
+  "windSpeed10m": zod.number().min(optimizeVoyageBodyFuelCastFeaturesWindSpeed10mMin),
+  "waveHeight": zod.number().min(optimizeVoyageBodyFuelCastFeaturesWaveHeightMin),
+  "oceanCurrentVelocity": zod.number().min(optimizeVoyageBodyFuelCastFeaturesOceanCurrentVelocityMin)
+}).optional()
 })
 
 export const optimizeVoyageResponseVesselOneNameMax = 120;
@@ -651,7 +734,9 @@ export const OptimizeVoyageResponse = zod.object({
   "speedKnots": zod.number(),
   "fuelMassTonnes": zod.number(),
   "fuelVolumeM3": zod.number(),
-  "totalCostUsd": zod.number(),
+  "totalCostInr": zod.number(),
+  "fuelRateKgPerSecond": zod.number(),
+  "fuelEstimator": zod.string(),
   "wellToWakeKgCo2e": zod.number(),
   "tankToWakeKgCo2e": zod.number(),
   "durationHours": zod.number(),
@@ -670,7 +755,9 @@ export const OptimizeVoyageResponse = zod.object({
   "speedKnots": zod.number(),
   "fuelMassTonnes": zod.number(),
   "fuelVolumeM3": zod.number(),
-  "totalCostUsd": zod.number(),
+  "totalCostInr": zod.number(),
+  "fuelRateKgPerSecond": zod.number(),
+  "fuelEstimator": zod.string(),
   "wellToWakeKgCo2e": zod.number(),
   "tankToWakeKgCo2e": zod.number(),
   "durationHours": zod.number(),
@@ -679,7 +766,7 @@ export const OptimizeVoyageResponse = zod.object({
 }),
   "convergence": zod.array(zod.object({
   "iteration": zod.number().int(),
-  "bestCostUsd": zod.number(),
+  "bestCostInr": zod.number(),
   "bestWellToWakeKgCo2e": zod.number(),
   "bestDurationHours": zod.number()
 })),
@@ -689,7 +776,9 @@ export const OptimizeVoyageResponse = zod.object({
   "speedKnots": zod.number(),
   "fuelMassTonnes": zod.number(),
   "fuelVolumeM3": zod.number(),
-  "totalCostUsd": zod.number(),
+  "totalCostInr": zod.number(),
+  "fuelRateKgPerSecond": zod.number(),
+  "fuelEstimator": zod.string(),
   "wellToWakeKgCo2e": zod.number(),
   "tankToWakeKgCo2e": zod.number(),
   "durationHours": zod.number(),
@@ -703,7 +792,9 @@ export const OptimizeVoyageResponse = zod.object({
   "speedKnots": zod.number(),
   "fuelMassTonnes": zod.number(),
   "fuelVolumeM3": zod.number(),
-  "totalCostUsd": zod.number(),
+  "totalCostInr": zod.number(),
+  "fuelRateKgPerSecond": zod.number(),
+  "fuelEstimator": zod.string(),
   "wellToWakeKgCo2e": zod.number(),
   "tankToWakeKgCo2e": zod.number(),
   "durationHours": zod.number(),

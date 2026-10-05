@@ -3,7 +3,6 @@ import {
   CreateVesselResponse,
   DeleteVesselParams,
   DeleteVesselResponse,
-  GetMaritimeCatalogResponse,
   ListVesselsResponse,
   OptimizeVoyageBody,
   OptimizeVoyageResponse,
@@ -14,7 +13,12 @@ import {
 import { db, maritimeVesselsTable } from "@workspace/db";
 import { asc, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
-import { getMaritimeCatalog, optimizeVoyage } from "../lib/maritime-engine";
+import {
+  getFuelCastPredictionRows,
+  getMaritimeCatalog,
+  optimizeVoyage,
+} from "../lib/maritime-engine";
+import { predictFuelCastBatch } from "../lib/fuelcast";
 
 const router: IRouter = Router();
 
@@ -72,10 +76,6 @@ function validateVesselRules(
   }
   return null;
 }
-
-router.get("/maritime/catalog", (_req, res): void => {
-  res.json(GetMaritimeCatalogResponse.parse(getMaritimeCatalog()));
-});
 
 router.get("/maritime/vessels", async (_req, res): Promise<void> => {
   const vessels = await db
@@ -163,7 +163,17 @@ router.post("/maritime/optimize", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const result = optimizeVoyage(vessel, parsed.data);
+    let result;
+    if (parsed.data.fuelEstimator === "fuelcast_ml") {
+      const rows = getFuelCastPredictionRows(vessel, parsed.data);
+      const rates = await predictFuelCastBatch(rows.map((row) => row.features));
+      const ratesBySpeed = new Map(
+        rows.map((row, index) => [row.speedKnots, rates[index]!]),
+      );
+      result = optimizeVoyage(vessel, parsed.data, ratesBySpeed);
+    } else {
+      result = optimizeVoyage(vessel, parsed.data);
+    }
     res.json(OptimizeVoyageResponse.parse(result));
   } catch (error) {
     const message =

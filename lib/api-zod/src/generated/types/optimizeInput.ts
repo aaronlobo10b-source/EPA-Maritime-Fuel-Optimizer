@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { FuelCastScenarioFeatures } from './fuelCastScenarioFeatures';
 import type { FuelScenarioInput } from './fuelScenarioInput';
 import type { ObjectiveWeights } from './objectiveWeights';
+import type { OptimizeInputFuelEstimator } from './optimizeInputFuelEstimator';
 
 export interface OptimizeInput {
   vesselId: string;
@@ -44,14 +46,14 @@ export interface OptimizeInput {
   /** @exclusiveMinimum 0 */
   berthWindowEndHour: number;
   /** @minimum 0 */
-  carbonPriceUsdPerTonne: number;
+  carbonPriceInrPerTonne: number;
   /**
      * @minLength 2
      * @maxLength 300
      */
   carbonPriceSource: string;
   /** @minimum 0 */
-  portFeesUsd: number;
+  portFeesInr: number;
   /**
      * @minLength 2
      * @maxLength 300
@@ -70,4 +72,6 @@ export interface OptimizeInput {
      * @maximum 2147483647
      */
   randomSeed: number;
+  fuelEstimator?: OptimizeInputFuelEstimator;
+  fuelCastFeatures?: FuelCastScenarioFeatures;
 }

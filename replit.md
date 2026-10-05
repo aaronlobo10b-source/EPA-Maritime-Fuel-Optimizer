@@ -1,6 +1,6 @@
-# [Project name]
+# Maritime Fuel Optimizer
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Source-backed vessel and voyage planning with a physics-based fuel baseline, optional local FuelCast predictions, and fleet optimization.
 
 ## Run & Operate
 
@@ -18,28 +18,34 @@ _Replace the heading above with the project's name, and this line with one sente
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Build: esbuild (ESM bundle)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/api-server/src/lib/maritime-engine.ts` — voyage physics, fuel estimates, INR objective, and optimizer heuristics.
+- `artifacts/api-server/src/lib/fuelcast.ts` and `scripts/fuelcast_model.py` — local measured-data validation and prediction integration.
+- `lib/api-spec/openapi.yaml` — API contract source; generated clients and validators live under `lib/`.
+- `lib/db/src/schema/maritime-vessels.ts` — saved vessel profile schema.
+- `artifacts/maritime-optimizer/src/App.tsx` — dashboard and voyage workspace.
+- `README.md` — setup, currency methodology, FuelCast provenance, license, and local training instructions.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Vessel particulars and financial assumptions are operator-entered and source-cited; no demo vessel or price is preloaded.
+- Physics remains the default estimate. FuelCast is a separately selected model whose kg/s prediction is integrated over sailing time.
+- FuelCast data and fitted weights stay under the ignored `.local/fuelcast/` directory.
+- Fuel, carbon, port, and voyage costs use INR directly without exchange-rate conversion.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
+The dashboard manages vessel profiles, compares voyage scenarios, reports emissions and schedule constraints, and benchmarks QPSO, GA, PSO, and greedy optimization. There is no QUBO implementation in the current codebase.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- FuelCast training requires a separate Python environment and a local license-compliant download; follow `README.md`.
+- FuelCast has no reliable voyage IDs or absolute timestamps. Time blocks use its sequential five-minute row index.
+- Run `pnpm --filter @workspace/api-spec run codegen` after editing the OpenAPI source.
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See `README.md` for local data setup, license, validation, and INR methodology.

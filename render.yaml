@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: maritime-fuel-optimizer
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: FUELCAST_MODEL_SHA256
+        sync: false
+      - key: FUELCAST_STORAGE_BUCKET
+        value: fuelcast-private
+      - key: FUELCAST_ARTIFACT_DIR
+        value: /tmp/fuelcast

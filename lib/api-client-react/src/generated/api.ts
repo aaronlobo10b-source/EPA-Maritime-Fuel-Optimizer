@@ -22,6 +22,7 @@ import type {
 import type {
   DeleteResult,
   Error,
+  FuelCastValidation,
   HealthStatus,
   MaritimeCatalog,
   OptimizationResponse,
@@ -212,6 +213,83 @@ export function useGetMaritimeCatalog<TData = Awaited<ReturnType<typeof getMarit
 
 
 
+export const getGetFuelCastValidationUrl = () => {
+
+
+
+
+  return `/api/maritime/fuelcast/validation`
+}
+
+/**
+ * @summary Get local FuelCast measured-data validation results
+ */
+export const getFuelCastValidation = async ( options?: Parameters<typeof customFetch>[1]): Promise<FuelCastValidation> => {
+
+  return customFetch<FuelCastValidation>(getGetFuelCastValidationUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFuelCastValidationQueryKey = () => {
+    return [
+    `/api/maritime/fuelcast/validation`
+    ] as const;
+    }
+
+
+export const getGetFuelCastValidationQueryOptions = <TData = Awaited<ReturnType<typeof getFuelCastValidation>>, TError = ErrorType<Error>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFuelCastValidation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFuelCastValidationQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFuelCastValidation>>> = ({ signal }) => getFuelCastValidation({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFuelCastValidation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFuelCastValidationQueryResult = NonNullable<Awaited<ReturnType<typeof getFuelCastValidation>>>
+export type GetFuelCastValidationQueryError = ErrorType<Error>
+
+
+/**
+ * @summary Get local FuelCast measured-data validation results
+ */
+
+export function useGetFuelCastValidation<TData = Awaited<ReturnType<typeof getFuelCastValidation>>, TError = ErrorType<Error>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFuelCastValidation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFuelCastValidationQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getListVesselsUrl = () => {
 
 
@@ -245,7 +323,7 @@ export const getListVesselsQueryKey = () => {
     }
 
 
-export const getListVesselsQueryOptions = <TData = Awaited<ReturnType<typeof listVessels>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVessels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListVesselsQueryOptions = <TData = Awaited<ReturnType<typeof listVessels>>, TError = ErrorType<Error>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVessels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -264,14 +342,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ListVesselsQueryResult = NonNullable<Awaited<ReturnType<typeof listVessels>>>
-export type ListVesselsQueryError = ErrorType<unknown>
+export type ListVesselsQueryError = ErrorType<Error>
 
 
 /**
  * @summary List saved vessel profiles
  */
 
-export function useListVessels<TData = Awaited<ReturnType<typeof listVessels>>, TError = ErrorType<unknown>>(
+export function useListVessels<TData = Awaited<ReturnType<typeof listVessels>>, TError = ErrorType<Error>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVessels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -494,7 +572,7 @@ export const deleteVessel = async (vesselId: string, options?: Parameters<typeof
 
 export const getDeleteVesselMutationKey = () => ['deleteVessel'] as const;
 
-export const getDeleteVesselMutationOptions = <TError = ErrorType<unknown>,
+export const getDeleteVesselMutationOptions = <TError = ErrorType<Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVessel>>, TError,DeleteVesselMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof deleteVessel>>, TError,DeleteVesselMutationVariables, TContext> => {
 
@@ -523,13 +601,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type DeleteVesselMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVessel>>>
 
-    export type DeleteVesselMutationError = ErrorType<unknown>
+    export type DeleteVesselMutationError = ErrorType<Error>
     export type DeleteVesselMutationVariables = {vesselId: string}
 
     /**
  * @summary Delete a saved vessel profile
  */
-export const useDeleteVessel = <TError = ErrorType<unknown>,
+export const useDeleteVessel = <TError = ErrorType<Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVessel>>, TError,DeleteVesselMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteVessel>>,

@@ -1,0 +1,10 @@
+.git
+.local
+node_modules
+**/node_modules
+**/dist
+**/__pycache__
+*.py[cod]
+*.tsbuildinfo
+*.parquet
+coverage

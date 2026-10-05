@@ -1,13 +1,16 @@
 import { performance } from "node:perf_hooks";
 import type { MaritimeVessel } from "@workspace/db";
 import type { FuelProfile, OptimizeInput } from "@workspace/api-zod";
+import type { FuelCastPredictionRow } from "./fuelcast";
 type Candidate = {
   fuelId: string;
   fuelName: string;
   speedKnots: number;
   fuelMassTonnes: number;
   fuelVolumeM3: number;
-  totalCostUsd: number;
+  totalCostInr: number;
+  fuelRateKgPerSecond: number;
+  fuelEstimator: string;
   wellToWakeKgCo2e: number;
   tankToWakeKgCo2e: number;
   durationHours: number;
@@ -192,6 +195,61 @@ function getPhysics(
   };
 }
 
+function speedGrid(input: OptimizeInput): number[] {
+  const count =
+    Math.floor((input.maxSpeedKnots - input.minSpeedKnots) / input.speedStepKnots) + 1;
+  if (count < 1 || count > 1200) {
+    throw new Error("The speed step creates too many candidates; use at most 1,200 speeds.");
+  }
+  const speeds = Array.from(
+    { length: count },
+    (_, index) => input.minSpeedKnots + index * input.speedStepKnots,
+  );
+  const lastSpeed = speeds[speeds.length - 1]!;
+  if (input.maxSpeedKnots - lastSpeed > input.speedStepKnots * 0.25) {
+    speeds.push(input.maxSpeedKnots);
+  }
+  return speeds;
+}
+
+export function getFuelCastPredictionRows(
+  vessel: MaritimeVessel,
+  input: OptimizeInput,
+): { speedKnots: number; features: FuelCastPredictionRow }[] {
+  const sourceFeatures = input.fuelCastFeatures;
+  if (!sourceFeatures) {
+    throw new Error("Enter the measured FuelCast feature values for this scenario.");
+  }
+  const referencePower = getPhysics(vessel, input, sourceFeatures.referenceSpeedKnots);
+  const referencePowerKw =
+    (referencePower.basePowerKw +
+      referencePower.windAddedPowerKw +
+      referencePower.waveAddedPowerKw) /
+    vessel.engineEfficiency;
+  if (!Number.isFinite(referencePowerKw) || referencePowerKw <= 0) {
+    throw new Error("The physics baseline cannot scale shaft power at the reference speed.");
+  }
+  return speedGrid(input).map((speedKnots) => {
+    const physics = getPhysics(vessel, input, speedKnots);
+    const requiredPowerKw =
+      (physics.basePowerKw + physics.windAddedPowerKw + physics.waveAddedPowerKw) /
+      vessel.engineEfficiency;
+    return {
+      speedKnots,
+      features: {
+        Consumer_Total_ShaftPower:
+          sourceFeatures.totalShaftPowerAtReferenceSpeed * (requiredPowerKw / referencePowerKw),
+        Ship_SpeedOverGround:
+          sourceFeatures.shipSpeedOverGroundAtReferenceSpeed *
+          (speedKnots / sourceFeatures.referenceSpeedKnots),
+        Weather_WindSpeed10M: sourceFeatures.windSpeed10m,
+        Weather_WaveHeight: sourceFeatures.waveHeight,
+        Weather_OceanCurrentVelocity: sourceFeatures.oceanCurrentVelocity,
+      },
+    };
+  });
+}
+
 function normalizedObjective(
   candidate: Omit<Candidate, "score">,
   ranges: { cost: [number, number]; emissions: [number, number]; duration: [number, number] },
@@ -202,7 +260,7 @@ function normalizedObjective(
   const weightSum = weights.cost + weights.emissions + weights.duration;
   if (weightSum <= 0) return Number.POSITIVE_INFINITY;
   return (
-    (weights.cost * normalize(candidate.totalCostUsd, ranges.cost) +
+    (weights.cost * normalize(candidate.totalCostInr, ranges.cost) +
       weights.emissions *
         normalize(candidate.wellToWakeKgCo2e, ranges.emissions) +
       weights.duration * normalize(candidate.durationHours, ranges.duration)) /
@@ -212,11 +270,11 @@ function normalizedObjective(
 
 function dominates(left: Candidate, right: Candidate): boolean {
   const noWorse =
-    left.totalCostUsd <= right.totalCostUsd &&
+    left.totalCostInr <= right.totalCostInr &&
     left.wellToWakeKgCo2e <= right.wellToWakeKgCo2e &&
     left.durationHours <= right.durationHours;
   const strictlyBetter =
-    left.totalCostUsd < right.totalCostUsd ||
+    left.totalCostInr < right.totalCostInr ||
     left.wellToWakeKgCo2e < right.wellToWakeKgCo2e ||
     left.durationHours < right.durationHours;
   return noWorse && strictlyBetter;
@@ -228,7 +286,7 @@ function pareto(candidates: Candidate[]): Candidate[] {
     const key = [
       candidate.fuelId,
       candidate.speedKnots.toFixed(4),
-      candidate.totalCostUsd.toFixed(4),
+      candidate.totalCostInr.toFixed(4),
       candidate.wellToWakeKgCo2e.toFixed(4),
     ].join("|");
     if (!unique.has(key)) unique.set(key, candidate);
@@ -238,7 +296,7 @@ function pareto(candidates: Candidate[]): Candidate[] {
     (candidate, index) =>
       !items.some((other, otherIndex) => otherIndex !== index && dominates(other, candidate)),
   );
-  front.sort((a, b) => a.totalCostUsd - b.totalCostUsd);
+  front.sort((a, b) => a.totalCostInr - b.totalCostInr);
   return front;
 }
 
@@ -251,12 +309,12 @@ function downsample<T>(items: T[], limit: number): T[] {
 
 function hypervolume(front: Candidate[], feasible: Candidate[]): number {
   if (!front.length || !feasible.length) return 0;
-  const minMax = (key: "totalCostUsd" | "wellToWakeKgCo2e" | "durationHours") => {
+  const minMax = (key: "totalCostInr" | "wellToWakeKgCo2e" | "durationHours") => {
     const values = feasible.map((item) => item[key]);
     return [Math.min(...values), Math.max(...values)] as [number, number];
   };
   const bounds = {
-    x: minMax("totalCostUsd"),
+    x: minMax("totalCostInr"),
     y: minMax("wellToWakeKgCo2e"),
     z: minMax("durationHours"),
   };
@@ -264,7 +322,7 @@ function hypervolume(front: Candidate[], feasible: Candidate[]): number {
     max === min ? 0 : (value - min) / (max - min);
   const ref = 1.05;
   const points = front.map((item) => ({
-    x: normalize(item.totalCostUsd, bounds.x),
+    x: normalize(item.totalCostInr, bounds.x),
     y: normalize(item.wellToWakeKgCo2e, bounds.y),
     z: normalize(item.durationHours, bounds.z),
   }));
@@ -313,6 +371,7 @@ function toParetoPoint(candidate: Candidate) {
 export function optimizeVoyage(
   vessel: MaritimeVessel,
   input: OptimizeInput,
+  fuelRatesBySpeed?: ReadonlyMap<number, number>,
 ) {
   if (input.cargoTonnes > vessel.cargoCapacityTonnes) {
     throw new Error("Cargo exceeds this vessel's source-entered cargo capacity.");
@@ -366,28 +425,28 @@ export function optimizeVoyage(
       "No selected fuel has a sourced price and lifecycle input, port availability, vessel compatibility, and a defined tank volume.",
     );
   }
+  const useFuelCast = input.fuelEstimator === "fuelcast_ml";
+  if (useFuelCast && !fuelRatesBySpeed) {
+    throw new Error("FuelCast is selected but no local trained model prediction is available.");
+  }
+  if (useFuelCast && compatibleFuelChoices.length !== 1) {
+    throw new Error("FuelCast predicts total measured fuel rate; select exactly one priced fuel scenario.");
+  }
   if (input.fuels.some((fuel) => !fuel.bunkerPriceSource.trim() || !fuel.wellToTankSource.trim())) {
     throw new Error("Fuel price and well-to-tank values must include source details.");
   }
 
-  const speedCount =
-    Math.floor((input.maxSpeedKnots - input.minSpeedKnots) / input.speedStepKnots) + 1;
-  if (speedCount < 1 || speedCount > 1200) {
-    throw new Error("The speed step creates too many candidates; use at most 1,200 speeds.");
-  }
-  const speeds = Array.from(
-    { length: speedCount },
-    (_, index) => input.minSpeedKnots + index * input.speedStepKnots,
-  );
-  const lastSpeed = speeds[speeds.length - 1]!;
-  if (input.maxSpeedKnots - lastSpeed > input.speedStepKnots * 0.25) {
-    speeds.push(input.maxSpeedKnots);
-  }
+  const speeds = speedGrid(input);
 
   const evaluate = (speed: number, fuelIndex: number): Candidate => {
+    const evaluatedSpeed = useFuelCast
+      ? speeds.reduce((closest, candidate) =>
+          Math.abs(candidate - speed) < Math.abs(closest - speed) ? candidate : closest,
+        )
+      : speed;
     const fuel = compatibleFuelChoices[Math.max(0, Math.min(compatibleFuelChoices.length - 1, Math.round(fuelIndex)))]!;
     const profile = profilesById.get(fuel.fuelId)!;
-    const physics = getPhysics(vessel, input, speed);
+    const physics = getPhysics(vessel, input, evaluatedSpeed);
     const throughWaterSpeed = physics.currentAdjustedSpeedKnots;
     const sailingDurationHours =
       throughWaterSpeed > 0 ? input.distanceNm / throughWaterSpeed : Number.POSITIVE_INFINITY;
@@ -397,12 +456,17 @@ export function optimizeVoyage(
       vessel.engineEfficiency;
     const engineLoadFraction = requiredEnginePowerKw / vessel.maxEnginePowerKw;
     const sfoc = sfocAtLoad(vessel.sfocCurve, engineLoadFraction);
+    const fuelRateKgPerSecond = useFuelCast
+      ? fuelRatesBySpeed!.get(evaluatedSpeed)!
+      : (requiredEnginePowerKw *
+          sfoc *
+          (REFERENCE_FUEL_LHV_MJ_KG / profile.lowerHeatingValueMjKg!)) /
+        3_600_000;
+    if (!Number.isFinite(fuelRateKgPerSecond) || fuelRateKgPerSecond < 0) {
+      throw new Error("A candidate has no finite non-negative fuel-rate estimate.");
+    }
     const fuelMassTonnes =
-      (requiredEnginePowerKw *
-        sailingDurationHours *
-        sfoc *
-        (REFERENCE_FUEL_LHV_MJ_KG / profile.lowerHeatingValueMjKg!)) /
-      1_000_000;
+      (fuelRateKgPerSecond * sailingDurationHours * 3600) / 1000;
     const fuelVolumeM3 = (fuelMassTonnes * 1000) / fuel.densityKgPerM3;
     const weightPenalty =
       vessel.alternativeFuelWeightPenaltyTonnes[fuel.fuelId] ?? 0;
@@ -420,10 +484,10 @@ export function optimizeVoyage(
       fuelMassTonnes * 1000 * fuel.nonCo2TankToWakeKgCo2ePerKg;
     const wellToWakeKgCo2e =
       fuelMassTonnes * 1000 * fuel.wellToTankKgCo2ePerKg + tankToWakeKgCo2e;
-    const fuelCostUsd = fuelMassTonnes * fuel.bunkerPriceUsdPerTonne;
-    const carbonCostUsd =
-      Math.max(0, wellToWakeKgCo2e) * (input.carbonPriceUsdPerTonne / 1000);
-    const totalCostUsd = fuelCostUsd + carbonCostUsd + input.portFeesUsd;
+    const fuelCostInr = fuelMassTonnes * fuel.bunkerPriceInrPerTonne;
+    const carbonCostInr =
+      Math.max(0, wellToWakeKgCo2e) * (input.carbonPriceInrPerTonne / 1000);
+    const totalCostInr = fuelCostInr + carbonCostInr + input.portFeesInr;
     const arrivalWithinWindow =
       sailingDurationHours <= input.berthWindowEndHour &&
       Number.isFinite(sailingDurationHours);
@@ -438,10 +502,12 @@ export function optimizeVoyage(
     return {
       fuelId: profile.fuelId,
       fuelName: profile.name,
-      speedKnots: speed,
+      speedKnots: evaluatedSpeed,
       fuelMassTonnes,
       fuelVolumeM3,
-      totalCostUsd,
+      totalCostInr,
+      fuelRateKgPerSecond,
+      fuelEstimator: useFuelCast ? "FuelCast real-data ML" : "Physics-based engineering baseline",
       wellToWakeKgCo2e,
       tankToWakeKgCo2e,
       durationHours,
@@ -466,8 +532,8 @@ export function optimizeVoyage(
 
   const ranges = {
     cost: [
-      Math.min(...gridCandidates.map((item) => item.totalCostUsd)),
-      Math.max(...gridCandidates.map((item) => item.totalCostUsd)),
+      Math.min(...gridCandidates.map((item) => item.totalCostInr)),
+      Math.max(...gridCandidates.map((item) => item.totalCostInr)),
     ] as [number, number],
     emissions: [
       Math.min(...gridCandidates.map((item) => item.wellToWakeKgCo2e)),
@@ -510,7 +576,7 @@ export function optimizeVoyage(
     const discovered: Candidate[] = [];
     const convergence: {
       iteration: number;
-      bestCostUsd: number;
+      bestCostInr: number;
       bestWellToWakeKgCo2e: number;
       bestDurationHours: number;
     }[] = [];
@@ -552,7 +618,7 @@ export function optimizeVoyage(
       const best = currentBest;
       convergence.push({
         iteration: generation,
-        bestCostUsd: best.totalCostUsd,
+        bestCostInr: best.totalCostInr,
         bestWellToWakeKgCo2e: best.wellToWakeKgCo2e,
         bestDurationHours: best.durationHours,
       });
@@ -691,7 +757,7 @@ export function optimizeVoyage(
     convergence: [
       {
         iteration: 1,
-        bestCostUsd: greedyBest.totalCostUsd,
+        bestCostInr: greedyBest.totalCostInr,
         bestWellToWakeKgCo2e: greedyBest.wellToWakeKgCo2e,
         bestDurationHours: greedyBest.durationHours,
       },

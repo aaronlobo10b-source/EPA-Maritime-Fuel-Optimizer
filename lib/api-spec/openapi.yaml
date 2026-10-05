@@ -38,6 +38,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MaritimeCatalog"
+  /maritime/fuelcast/validation:
+    get:
+      operationId: getFuelCastValidation
+      tags: [maritime]
+      summary: Get local FuelCast measured-data validation results
+      responses:
+        "200":
+          description: Local FuelCast validation status and metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuelCastValidation"
+        "503":
+          description: Local FuelCast validation report is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /maritime/vessels:
     get:
       operationId: listVessels
@@ -52,6 +70,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Vessel"
+        "503":
+          description: Vessel storage is unavailable because DATABASE_URL is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: createVessel
       tags: [maritime]
@@ -71,6 +95,12 @@ paths:
                 $ref: "#/components/schemas/Vessel"
         "400":
           description: Invalid vessel profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Vessel storage is unavailable because DATABASE_URL is not configured
           content:
             application/json:
               schema:
@@ -106,6 +136,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Vessel storage is unavailable because DATABASE_URL is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     delete:
       operationId: deleteVessel
       tags: [maritime]
@@ -124,6 +160,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteResult"
+        "503":
+          description: Vessel storage is unavailable because DATABASE_URL is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /maritime/optimize:
     post:
       operationId: optimizeVoyage
@@ -150,6 +192,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Selected vessel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Vessel storage is unavailable because DATABASE_URL is not configured
           content:
             application/json:
               schema:
@@ -350,7 +398,7 @@ components:
       properties:
         fuelId:
           type: string
-        bunkerPriceUsdPerTonne:
+        bunkerPriceInrPerTonne:
           type: number
           minimum: 0
         densityKgPerM3:
@@ -381,7 +429,7 @@ components:
           type: boolean
       required:
         - fuelId
-        - bunkerPriceUsdPerTonne
+        - bunkerPriceInrPerTonne
         - densityKgPerM3
         - wellToTankKgCo2ePerKg
         - nonCo2TankToWakeKgCo2ePerKg
@@ -435,14 +483,14 @@ components:
         berthWindowEndHour:
           type: number
           exclusiveMinimum: 0
-        carbonPriceUsdPerTonne:
+        carbonPriceInrPerTonne:
           type: number
           minimum: 0
         carbonPriceSource:
           type: string
           minLength: 2
           maxLength: 300
-        portFeesUsd:
+        portFeesInr:
           type: number
           minimum: 0
         portFeesSource:
@@ -464,6 +512,12 @@ components:
           type: integer
           minimum: 0
           maximum: 2147483647
+        fuelEstimator:
+          type: string
+          enum: [physics_baseline, fuelcast_ml]
+          default: physics_baseline
+        fuelCastFeatures:
+          $ref: "#/components/schemas/FuelCastScenarioFeatures"
       required:
         - vesselId
         - distanceNm
@@ -478,14 +532,142 @@ components:
         - currentAlongTrackKnots
         - berthWindowStartHour
         - berthWindowEndHour
-        - carbonPriceUsdPerTonne
+        - carbonPriceInrPerTonne
         - carbonPriceSource
-        - portFeesUsd
+        - portFeesInr
         - portFeesSource
         - objectiveWeights
         - fuels
         - evaluationBudget
         - randomSeed
+    FuelCastScenarioFeatures:
+      type: object
+      properties:
+        referenceSpeedKnots:
+          type: number
+          exclusiveMinimum: 0
+        shipSpeedOverGroundAtReferenceSpeed:
+          type: number
+          exclusiveMinimum: 0
+        totalShaftPowerAtReferenceSpeed:
+          type: number
+          exclusiveMinimum: 0
+        windSpeed10m:
+          type: number
+          minimum: 0
+        waveHeight:
+          type: number
+          minimum: 0
+        oceanCurrentVelocity:
+          type: number
+          minimum: 0
+      required:
+        - referenceSpeedKnots
+        - shipSpeedOverGroundAtReferenceSpeed
+        - totalShaftPowerAtReferenceSpeed
+        - windSpeed10m
+        - waveHeight
+        - oceanCurrentVelocity
+    FuelCastMetrics:
+      type: object
+      properties:
+        observations:
+          type: integer
+        maeKgPerSecond:
+          type: number
+        rmseKgPerSecond:
+          type: number
+        r2:
+          type: number
+        mapePercent:
+          type: [number, "null"]
+        mapeUnavailableReason:
+          type: [string, "null"]
+      required: [observations, maeKgPerSecond, rmseKgPerSecond, r2, mapePercent, mapeUnavailableReason]
+    FuelCastTimeBlock:
+      allOf:
+        - $ref: "#/components/schemas/FuelCastMetrics"
+        - type: object
+          properties:
+            vessel:
+              type: string
+            sourceOrderStart:
+              type: integer
+            sourceOrderEnd:
+              type: integer
+          required: [vessel, sourceOrderStart, sourceOrderEnd]
+    FuelCastValidation:
+      type: object
+      properties:
+        available:
+          type: boolean
+        modelAvailable:
+          type: boolean
+        dataset:
+          type: string
+        target:
+          type: string
+        targetUnit:
+          type: string
+        observationsLoaded:
+          type: [integer, "null"]
+        observationsUsable:
+          type: [integer, "null"]
+        vesselCount:
+          type: [integer, "null"]
+        vessels:
+          type: array
+          items:
+            type: string
+        features:
+          type: array
+          items:
+            type: string
+        model:
+          type: [string, "null"]
+        trainingObservations:
+          type: [integer, "null"]
+        testObservations:
+          type: [integer, "null"]
+        timeBlockMetrics:
+          $ref: "#/components/schemas/FuelCastMetrics"
+        timeBlocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/FuelCastTimeBlock"
+        unseenVesselMetrics:
+          $ref: "#/components/schemas/FuelCastMetrics"
+        unseenVesselFolds:
+          type: array
+          items:
+            type: object
+            properties:
+              heldOutVessel:
+                type: string
+              trainingObservations:
+                type: integer
+              testObservations:
+                type: integer
+              maeKgPerSecond:
+                type: number
+              rmseKgPerSecond:
+                type: number
+              r2:
+                type: number
+              mapePercent:
+                type: [number, "null"]
+              mapeUnavailableReason:
+                type: [string, "null"]
+            required: [heldOutVessel, trainingObservations, testObservations, maeKgPerSecond, rmseKgPerSecond, r2, mapePercent, mapeUnavailableReason]
+        physicsBaselineStatus:
+          type: string
+        physicsBaselineReason:
+          type: string
+        limitations:
+          type: array
+          items:
+            type: string
+      required: [available, modelAvailable, dataset, target, targetUnit, observationsLoaded, observationsUsable, vesselCount, vessels, features, model, trainingObservations, testObservations, timeBlockMetrics, timeBlocks, unseenVesselMetrics, unseenVesselFolds, physicsBaselineStatus, physicsBaselineReason, limitations]
     ObjectiveWeights:
       type: object
       properties:
@@ -507,13 +689,13 @@ components:
       properties:
         iteration:
           type: integer
-        bestCostUsd:
+        bestCostInr:
           type: number
         bestWellToWakeKgCo2e:
           type: number
         bestDurationHours:
           type: number
-      required: [iteration, bestCostUsd, bestWellToWakeKgCo2e, bestDurationHours]
+      required: [iteration, bestCostInr, bestWellToWakeKgCo2e, bestDurationHours]
     ParetoPoint:
       type: object
       properties:
@@ -527,8 +709,12 @@ components:
           type: number
         fuelVolumeM3:
           type: number
-        totalCostUsd:
+        totalCostInr:
           type: number
+        fuelRateKgPerSecond:
+          type: number
+        fuelEstimator:
+          type: string
         wellToWakeKgCo2e:
           type: number
         tankToWakeKgCo2e:
@@ -545,7 +731,9 @@ components:
         - speedKnots
         - fuelMassTonnes
         - fuelVolumeM3
-        - totalCostUsd
+        - totalCostInr
+        - fuelRateKgPerSecond
+        - fuelEstimator
         - wellToWakeKgCo2e
         - tankToWakeKgCo2e
         - durationHours

@@ -9,7 +9,7 @@
 export interface FuelScenarioInput {
   fuelId: string;
   /** @minimum 0 */
-  bunkerPriceUsdPerTonne: number;
+  bunkerPriceInrPerTonne: number;
   /** @exclusiveMinimum 0 */
   densityKgPerM3: number;
   /** @minimum -10 */

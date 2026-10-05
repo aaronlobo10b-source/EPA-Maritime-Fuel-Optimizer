@@ -10,9 +10,9 @@ import { Form } from '@/components/ui/form';
 import NotFound from '@/pages/not-found';
 import {
   getListVesselsQueryKey, useCreateVessel, useDeleteVessel, useGetMaritimeCatalog,
-  useListVessels, useOptimizeVoyage, useUpdateVessel,
+  useGetFuelCastValidation, useListVessels, useOptimizeVoyage, useUpdateVessel,
 } from '@workspace/api-client-react';
-import type { OptimizationResponse, OptimizeInput, Vessel, VesselInput } from '@workspace/api-client-react';
+import type { FuelCastValidation, OptimizationResponse, OptimizeInput, Vessel, VesselInput } from '@workspace/api-client-react';
 
 const queryClient = new QueryClient();
 const iconSize = 16;
@@ -32,11 +32,11 @@ const optimizationInputs: [string,string,string][] = [
   ['minSpeedKnots','Minimum speed','knots'],['maxSpeedKnots','Maximum speed','knots'],['speedStepKnots','Speed step','knots'],
   ['windBeaufort','Wind force','Beaufort'],['waveHeightM','Significant wave height','m'],['waveRelativeDirectionDeg','Wave direction relative to course','degrees'],
   ['currentAlongTrackKnots','Along-track current','knots'],['berthWindowStartHour','Berth window opens','hour from departure'],
-  ['berthWindowEndHour','Berth window closes','hour from departure'],['carbonPriceUsdPerTonne','Carbon price','USD / tCO₂e'],
-  ['portFeesUsd','Port fees','USD'],['evaluationBudget','Evaluation budget','evaluations'],['randomSeed','Optimizer seed','integer'],
+  ['berthWindowEndHour','Berth window closes','hour from departure'],['carbonPriceInrPerTonne','Carbon price','₹/tonne CO₂e'],
+  ['portFeesInr','Port fees','₹/voyage'],['evaluationBudget','Evaluation budget','evaluations'],['randomSeed','Optimizer seed','integer'],
 ];
 const fuelLabels: [string,string,string][] = [
-  ['bunkerPriceUsdPerTonne','Bunker price','USD / t'],['densityKgPerM3','Density','kg / m³'],['wellToTankKgCo2ePerKg','Well-to-tank emissions','kg CO₂e / kg'],
+  ['bunkerPriceInrPerTonne','Fuel price','₹/tonne'],['densityKgPerM3','Density','kg / m³'],['wellToTankKgCo2ePerKg','Well-to-tank emissions','kg CO₂e / kg'],
 ];
 const fmt = (n: number | undefined | null, digits=1) => n == null || !Number.isFinite(n) ? '—' : new Intl.NumberFormat('en-US',{maximumFractionDigits:digits}).format(n);
 const prettyClass = (s?: string) => s ? s.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase()) : 'Class not set';
@@ -67,7 +67,8 @@ function AppShell({children}: {children:React.ReactNode}) {
 }
 function Workspace() {
   const catalogQuery=useGetMaritimeCatalog();
-  const vesselsQuery=useListVessels();
+  const fuelcastQuery=useGetFuelCastValidation();
+  const vesselsQuery=useListVessels({query:{queryKey:getListVesselsQueryKey(),retry:false,retryOnMount:false,refetchOnWindowFocus:false}});
   const optimize=useOptimizeVoyage();
   const workspaceForm=useForm<AnyRecord>();
   const [vesselId,setVesselId]=useState('');
@@ -75,6 +76,9 @@ function Workspace() {
   const [weights,setWeights]=useState<AnyRecord>({});
   const [fuelValues,setFuelValues]=useState<Record<string,AnyRecord>>({});
   const [availability,setAvailability]=useState<Record<string,string>>({});
+  const [fuelEstimator,setFuelEstimator]=useState<'physics_baseline'|'fuelcast_ml'>('physics_baseline');
+  const [fuelCastInputs,setFuelCastInputs]=useState<AnyRecord>({});
+  const [fuelCastFuelId,setFuelCastFuelId]=useState('');
   const [result,setResult]=useState<OptimizationResponse|null>(null);
   const [submittedScenario,setSubmittedScenario]=useState<OptimizeInput|null>(null);
   const vessels=vesselsQuery.data??[];
@@ -83,29 +87,41 @@ function Workspace() {
   const compatible=useMemo(()=>selected&&catalog ? catalog.fuels.filter(f=>selected.fuelCompatibility.includes(f.fuelId)) : [],[selected,catalog]);
   const update=(key:string,value:string)=>setValues(prev=>({...prev,[key]:value}));
   const updateFuel=(id:string,key:string,value:string)=>setFuelValues(prev=>({...prev,[id]:{...prev[id],[key]:value}}));
+  const updateFuelCast=(key:string,value:string)=>setFuelCastInputs(prev=>({...prev,[key]:value}));
   const weightTotal=['cost','emissions','duration'].reduce((s,k)=>s+(Number(weights[k])||0),0);
   const submit=()=>{
     if(!selected||compatible.length===0) return;
+    const selectedFuels=fuelEstimator==='fuelcast_ml'?compatible.filter(f=>f.fuelId===fuelCastFuelId):compatible;
+    if(selectedFuels.length===0)return;
     const input:OptimizeInput={
       vesselId,
       distanceNm:Number(values.distanceNm),cargoTonnes:Number(values.cargoTonnes),actualDraftM:Number(values.actualDraftM),
       minSpeedKnots:Number(values.minSpeedKnots),maxSpeedKnots:Number(values.maxSpeedKnots),speedStepKnots:Number(values.speedStepKnots),
       windBeaufort:Number(values.windBeaufort),waveHeightM:Number(values.waveHeightM),waveRelativeDirectionDeg:Number(values.waveRelativeDirectionDeg),
       currentAlongTrackKnots:Number(values.currentAlongTrackKnots),berthWindowStartHour:Number(values.berthWindowStartHour),berthWindowEndHour:Number(values.berthWindowEndHour),
-      carbonPriceUsdPerTonne:Number(values.carbonPriceUsdPerTonne),carbonPriceSource:values.carbonPriceSource,portFeesUsd:Number(values.portFeesUsd),portFeesSource:values.portFeesSource,
+      carbonPriceInrPerTonne:Number(values.carbonPriceInrPerTonne),carbonPriceSource:values.carbonPriceSource,portFeesInr:Number(values.portFeesInr),portFeesSource:values.portFeesSource,
       objectiveWeights:{cost:Number(weights.cost),emissions:Number(weights.emissions),duration:Number(weights.duration)},
-      fuels:compatible.map(f=>({fuelId:f.fuelId,bunkerPriceUsdPerTonne:Number(fuelValues[f.fuelId]?.bunkerPriceUsdPerTonne),densityKgPerM3:Number(fuelValues[f.fuelId]?.densityKgPerM3),wellToTankKgCo2ePerKg:Number(fuelValues[f.fuelId]?.wellToTankKgCo2ePerKg),nonCo2TankToWakeKgCo2ePerKg:Number(fuelValues[f.fuelId]?.nonCo2TankToWakeKgCo2ePerKg),methaneSlipPercent:f.methaneSlipInputRequired?Number(fuelValues[f.fuelId]?.methaneSlipPercent):null,bunkerPriceSource:fuelValues[f.fuelId]?.bunkerPriceSource??'',bunkerPriceAsOfDate:fuelValues[f.fuelId]?.bunkerPriceAsOfDate??'',wellToTankSource:fuelValues[f.fuelId]?.wellToTankSource??'',availableAtBunkeringPort:availability[f.fuelId]==='yes'})),
+      fuels:selectedFuels.map(f=>({fuelId:f.fuelId,bunkerPriceInrPerTonne:Number(fuelValues[f.fuelId]?.bunkerPriceInrPerTonne),densityKgPerM3:Number(fuelValues[f.fuelId]?.densityKgPerM3),wellToTankKgCo2ePerKg:Number(fuelValues[f.fuelId]?.wellToTankKgCo2ePerKg),nonCo2TankToWakeKgCo2ePerKg:Number(fuelValues[f.fuelId]?.nonCo2TankToWakeKgCo2ePerKg),methaneSlipPercent:f.methaneSlipInputRequired?Number(fuelValues[f.fuelId]?.methaneSlipPercent):null,bunkerPriceSource:fuelValues[f.fuelId]?.bunkerPriceSource??'',bunkerPriceAsOfDate:fuelValues[f.fuelId]?.bunkerPriceAsOfDate??'',wellToTankSource:fuelValues[f.fuelId]?.wellToTankSource??'',availableAtBunkeringPort:availability[f.fuelId]==='yes'})),
       evaluationBudget:Number(values.evaluationBudget),randomSeed:Number(values.randomSeed),
+      fuelEstimator,
+      ...(fuelEstimator==='fuelcast_ml'?{fuelCastFeatures:{
+        referenceSpeedKnots:Number(fuelCastInputs.referenceSpeedKnots),
+        shipSpeedOverGroundAtReferenceSpeed:Number(fuelCastInputs.shipSpeedOverGroundAtReferenceSpeed),
+        totalShaftPowerAtReferenceSpeed:Number(fuelCastInputs.totalShaftPowerAtReferenceSpeed),
+        windSpeed10m:Number(fuelCastInputs.windSpeed10m),waveHeight:Number(fuelCastInputs.waveHeight),
+        oceanCurrentVelocity:Number(fuelCastInputs.oceanCurrentVelocity),
+      }}:{})
     };
     setSubmittedScenario(input);
     setResult(null);
     optimize.mutate({data:input},{onSuccess:data=>setResult(data)});
   };
-  const exportCsv=()=>{ if(!result)return; const rows=[['fuel','speed_knots','fuel_mass_tonnes','fuel_volume_m3','total_cost_usd','well_to_wake_kg_co2e','tank_to_wake_kg_co2e','duration_hours','engine_load_fraction','feasible'],...result.paretoFront.map(p=>[p.fuelName,p.speedKnots,p.fuelMassTonnes,p.fuelVolumeM3,p.totalCostUsd,p.wellToWakeKgCo2e,p.tankToWakeKgCo2e,p.durationHours,p.engineLoadFraction,p.feasible])]; const csv=rows.map(r=>r.map(c=>`"${String(c).replaceAll('"','""')}"`).join(',')).join('\n'); const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); const a=document.createElement('a');a.href=url;a.download='voyage-pareto.csv';a.click();URL.revokeObjectURL(url); };
+  const exportCsv=()=>{ if(!result)return; const rows=[['fuel','speed_knots','fuel_rate_kg_per_s','fuel_estimator','fuel_mass_tonnes','fuel_volume_m3','total_cost_inr_per_voyage','well_to_wake_kg_co2e','tank_to_wake_kg_co2e','duration_hours','engine_load_fraction','feasible'],...result.paretoFront.map(p=>[p.fuelName,p.speedKnots,p.fuelRateKgPerSecond,p.fuelEstimator,p.fuelMassTonnes,p.fuelVolumeM3,p.totalCostInr,p.wellToWakeKgCo2e,p.tankToWakeKgCo2e,p.durationHours,p.engineLoadFraction,p.feasible])]; const csv=rows.map(r=>r.map(c=>`"${String(c).replaceAll('"','""')}"`).join(',')).join('\n'); const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); const a=document.createElement('a');a.href=url;a.download='voyage-pareto.csv';a.click();URL.revokeObjectURL(url); };
   return <main className="page">
     <div className="page-heading"><div><div className="eyebrow">VOYAGE DECISION SYSTEM / 01</div><h1>Voyage optimization</h1><p className="page-intro">Compare fuel, cost, lifecycle emissions and schedule against your vessel's source data.</p></div><div className="actions"><span className="status">Inputs remain operator-owned</span></div></div>
+    <FuelCastValidationPanel status={fuelcastQuery.data} loading={fuelcastQuery.isLoading} error={fuelcastQuery.isError} onRetry={()=>fuelcastQuery.refetch()}/>
     {catalogQuery.isLoading||vesselsQuery.isLoading ? <Panel title="Loading planning data"><LoadingBlock/></Panel> :
-      (catalogQuery.isError||vesselsQuery.isError) ? <div className="error-box" role="alert" data-testid="status-workspace-error">Planning data could not be loaded. <button className="btn small" onClick={()=>{catalogQuery.refetch();vesselsQuery.refetch();}} data-testid="button-retry-workspace"><RefreshCw size={13}/> Retry</button></div> :
+      (catalogQuery.isError||vesselsQuery.isError) ? <div className="error-box" role="alert" data-testid="status-workspace-error">{vesselsQuery.isError&&!catalogQuery.isError?'Vessel profiles and voyage optimization require DATABASE_URL. FuelCast validation remains available.':'Maritime planning reference data could not be loaded.'} <button className="btn small" onClick={()=>{catalogQuery.refetch();vesselsQuery.refetch();}} data-testid="button-retry-workspace"><RefreshCw size={13}/> Retry</button></div> :
       <Form {...workspaceForm}><form onSubmit={workspaceForm.handleSubmit(submit)}>
         <div className="workspace-grid">
           <div className="stack">
@@ -121,6 +137,7 @@ function Workspace() {
               <div className="notice" style={{marginTop:15}}><strong>Forecast provenance.</strong> Weather, waves and current are supplied by the operator. These fields are not fetched, inferred or replaced with example conditions.</div>
             </Panel>
             <Panel title="Fuel assumptions" number="03" caption="Every fuel is evaluated from the values entered below; catalog properties are references only.">
+              <div className="notice" style={{marginBottom:12}}><strong>INR scenario pricing.</strong> Enter fuel in ₹/tonne, carbon in ₹/tonne CO₂e and port charges in ₹/voyage. Prices are operator-sourced; no current Indian marine-fuel market price is prefilled.</div>
               {!selected ? <div className="assumption"><CircleHelp size={15}/>Choose a vessel profile first to see compatible fuel options.</div> : compatible.length===0 ? <div className="assumption"><BadgeAlert size={15}/>No catalog fuels match this vessel's compatibility list. Update vessel compatibility or review catalog data.</div> :
                 <>{compatible.map(f=><div key={f.fuelId} data-testid={`fuel-assumptions-${f.fuelId}`} style={{padding:'13px 0',borderBottom:'1px solid #e5e9e5'}}>
                   <div className="fuel-row">
@@ -140,6 +157,22 @@ function Workspace() {
             </Panel>
           </div>
           <div className="stack">
+              <Panel title="Fuel rate estimator" caption="Choose the measured-data model only when its source features match this scenario.">
+                <div className="field"><label htmlFor="fuel-estimator">Fuel estimate method</label><select id="fuel-estimator" data-testid="select-fuel-estimator" value={fuelEstimator} onChange={e=>setFuelEstimator(e.target.value as 'physics_baseline'|'fuelcast_ml')}><option value="physics_baseline">Physics-based engineering baseline</option><option value="fuelcast_ml" disabled={!fuelcastQuery.data?.modelAvailable}>FuelCast real-data ML</option></select></div>
+                {fuelEstimator==='physics_baseline' ? <div className="assumption" style={{marginTop:12}}><Gauge size={15}/><span>The existing SFOC and vessel-physics estimate remains active. FuelCast is an optional measured-data alternative.</span></div> : <>
+                  <div className="notice" style={{marginTop:12}}><strong>REAL-WORLD MEASURED DATA.</strong> FuelCast predicts aggregate measured fuel rate. Select one priced fuel scenario only. Source speed and shaft power use the recorded dataset scale; their values are adjusted across candidate speeds using the existing engineering model's relative power ratios.</div>
+                  <div className="field" style={{marginTop:12}}><label htmlFor="fuelcast-priced-fuel">Priced fuel scenario</label><select id="fuelcast-priced-fuel" data-testid="select-fuelcast-fuel" value={fuelCastFuelId} onChange={e=>setFuelCastFuelId(e.target.value)} required><option value="">Select one compatible fuel</option>{compatible.map(f=><option key={f.fuelId} value={f.fuelId}>{f.name}</option>)}</select></div>
+                  <div className="field-grid three" style={{marginTop:12}}>
+                    <Field testId="input-fuelcast-reference-speed" label="Reference speed" unit="knots" value={fuelCastInputs.referenceSpeedKnots??''} onChange={v=>updateFuelCast('referenceSpeedKnots',v)} required min=".001"/>
+                    <Field testId="input-fuelcast-speed-over-ground" label="Ship speed over ground at reference" unit="m/s" value={fuelCastInputs.shipSpeedOverGroundAtReferenceSpeed??''} onChange={v=>updateFuelCast('shipSpeedOverGroundAtReferenceSpeed',v)} required min=".001"/>
+                    <Field testId="input-fuelcast-shaft-power" label="Total shaft power at reference" unit="W" value={fuelCastInputs.totalShaftPowerAtReferenceSpeed??''} onChange={v=>updateFuelCast('totalShaftPowerAtReferenceSpeed',v)} required min=".001"/>
+                    <Field testId="input-fuelcast-wind" label="10 m wind speed" unit="m/s" value={fuelCastInputs.windSpeed10m??''} onChange={v=>updateFuelCast('windSpeed10m',v)} required min="0"/>
+                    <Field testId="input-fuelcast-wave" label="Wave height" unit="m" value={fuelCastInputs.waveHeight??''} onChange={v=>updateFuelCast('waveHeight',v)} required min="0"/>
+                    <Field testId="input-fuelcast-current" label="Ocean current velocity" unit="m/s" value={fuelCastInputs.oceanCurrentVelocity??''} onChange={v=>updateFuelCast('oceanCurrentVelocity',v)} required min="0"/>
+                  </div>
+                  <div className="helper" style={{marginTop:10}}>Units follow the official FuelCast data card. Ship speed and shaft power are scaled across candidate speeds using dimensionless ratios; voyage distance, cargo, capacity, schedule, fuel price and density remain separate scenario inputs.</div>
+                </>}
+              </Panel>
             <Panel title="Decision objective" number="04" caption="Weights express relative priorities and must sum to 1.00.">
               <div>{[['cost','Cost'],['emissions','Lifecycle emissions'],['duration','Schedule duration']].map(([key,label])=>{const registration=workspaceForm.register(`weight-${key}`,{required:true,min:0,max:1});return <div className="weight-row" key={key}><label htmlFor={`weight-${key}`}>{label}</label><input id={`weight-${key}`} data-testid={`input-weight-${key}`} type="number" min="0" max="1" step=".01" required name={registration.name} ref={registration.ref} onBlur={registration.onBlur} value={weights[key]??''} onChange={e=>{registration.onChange(e);setWeights(v=>({...v,[key]:e.target.value}));}}/><span className="mono">{weights[key]||'—'}</span></div>;})}</div>
               <div className="assumption"><Activity size={15}/><span>Entered total: <strong className="mono">{weightTotal?fmt(weightTotal,2):'—'}</strong>. Objective weights are not normalized automatically.</span></div>
@@ -152,7 +185,7 @@ function Workspace() {
               <div className="assumption" style={{marginBottom:13}}><BookOpen size={15}/><span>{catalog?.provenanceNotice||'Catalog provenance notice unavailable.'}</span></div>
               <p className="helper" style={{fontSize:11,marginBottom:16}}>Calculation requires one vessel, complete fuel assumptions, non-negative objective weights totaling 1.00, and a complete voyage scenario. No recommendation is shown until the optimizer responds.</p>
               {optimize.isError&&<div className="error-box" role="alert" data-testid="status-optimization-error" style={{marginBottom:12}}>Optimization request failed. Review the inputs and retry. The API response has not been replaced with an estimate.</div>}
-              <button className="btn primary" type="submit" disabled={!selected||compatible.length===0||optimize.isPending||Math.abs(weightTotal-1)>0.001} data-testid="button-run-optimization">{optimize.isPending?<><LoaderCircle size={15}/>Calculating</>:<><BarChart3 size={15}/>Run comparison</>}</button>
+              <button className="btn primary" type="submit" disabled={!selected||compatible.length===0||optimize.isPending||Math.abs(weightTotal-1)>0.001||(fuelEstimator==='fuelcast_ml'&&(!fuelcastQuery.data?.modelAvailable||!fuelCastFuelId||['referenceSpeedKnots','shipSpeedOverGroundAtReferenceSpeed','totalShaftPowerAtReferenceSpeed','windSpeed10m','waveHeight','oceanCurrentVelocity'].some(key=>fuelCastInputs[key]===''||fuelCastInputs[key]===undefined||!Number.isFinite(Number(fuelCastInputs[key])))))} data-testid="button-run-optimization">{optimize.isPending?<><LoaderCircle size={15}/>Calculating</>:<><BarChart3 size={15}/>Run comparison</>}</button>
               {optimize.isPending&&<div style={{marginTop:15}}><LoadingBlock/></div>}
             </Panel>
             <Panel title="Model boundary" caption="Transparent inputs, traceable outputs.">
@@ -164,31 +197,60 @@ function Workspace() {
     {result&&<ResultView result={result} scenario={submittedScenario} onCsv={exportCsv}/>}
   </main>;
 }
+function FuelCastValidationPanel({status,loading,error,onRetry}: {status:FuelCastValidation|undefined;loading:boolean;error:boolean;onRetry:()=>void}) {
+  return <div style={{marginBottom:16}} data-testid="panel-fuelcast-validation">
+    <Panel title="FuelCast measured-data validation" caption="REAL-WORLD MEASURED DATA · Dataset FuelCast · Validation: time-block + unseen-vessel · CC BY-NC-ND 4.0 · files and model remain local">
+      {loading?<LoadingBlock/>:error||!status?<div className="notice"><strong>Local validation not available.</strong> Licensed data and trained weights are not bundled. Place the three Parquet files in <code>.local/fuelcast/data</code>, install <code>scripts/requirements-fuelcast.txt</code>, then run <code>python3 scripts/fuelcast_model.py train</code>. <button className="btn small" onClick={onRetry} data-testid="button-retry-fuelcast"><RefreshCw size={13}/> Retry</button></div>:<>
+        <div className="result-hero">
+          <div className="metric primary-metric"><div className="metric-label">Dataset · {status.dataset}</div><div className="metric-value">{status.observationsLoaded==null?'—':fmt(status.observationsLoaded,0)}<span className="metric-unit">observations</span></div></div>
+          <div className="metric"><div className="metric-label">Target</div><div className="metric-value" style={{fontSize:15}}>Measured fuel rate<span className="metric-unit">{status.targetUnit}</span></div></div>
+          <div className="metric"><div className="metric-label">Vessels</div><div className="metric-value">{status.vesselCount??'—'}</div></div>
+          <div className="metric"><div className="metric-label">Model</div><div className="metric-value" style={{fontSize:15}}>{status.modelAvailable?status.model:'Not trained locally'}</div></div>
+        </div>
+        <div className="assumption" style={{marginTop:12}}><Database size={15}/><span>{fmt(status.observationsUsable,0)} complete observations used · {status.trainingObservations==null?'—':fmt(status.trainingObservations,0)} train · {status.testObservations==null?'—':fmt(status.testObservations,0)} test · {status.features?.join(' · ')}</span></div>
+        {status.timeBlockMetrics&&<div className="workspace-grid" style={{marginTop:13}}>
+          <Panel title="Time-block validation" caption="Final 20% of each vessel's stored row sequence; no random row split.">
+            <div className="profile-facts"><div><div className="fact-label">MAE · kg/s</div><div className="fact-value">{fmt(status.timeBlockMetrics.maeKgPerSecond,4)}</div></div><div><div className="fact-label">RMSE · kg/s</div><div className="fact-value">{fmt(status.timeBlockMetrics.rmseKgPerSecond,4)}</div></div><div><div className="fact-label">R²</div><div className="fact-value">{fmt(status.timeBlockMetrics.r2,4)}</div></div><div><div className="fact-label">MAPE</div><div className="fact-value">{status.timeBlockMetrics.mapePercent==null?'N/A':`${fmt(status.timeBlockMetrics.mapePercent,2)}%`}</div></div></div>
+            {status.timeBlocks&&<div className="table-wrap" style={{marginTop:12}}><table><thead><tr><th>Vessel / ordered block</th><th>Rows</th><th>MAE · kg/s</th><th>RMSE · kg/s</th><th>R²</th></tr></thead><tbody>{status.timeBlocks.map(block=><tr key={block.vessel}><td>{block.vessel}<div className="helper">Source rows {fmt(block.sourceOrderStart,0)}–{fmt(block.sourceOrderEnd,0)}</div></td><td>{fmt(block.observations,0)}</td><td>{fmt(block.maeKgPerSecond,4)}</td><td>{fmt(block.rmseKgPerSecond,4)}</td><td>{fmt(block.r2,4)}</td></tr>)}</tbody></table></div>}
+          </Panel>
+          {status.unseenVesselMetrics&&<Panel title="Unseen-vessel validation" caption="Each fold trains on two vessels and tests on the third.">
+            <div className="profile-facts"><div><div className="fact-label">MAE · kg/s</div><div className="fact-value">{fmt(status.unseenVesselMetrics.maeKgPerSecond,4)}</div></div><div><div className="fact-label">RMSE · kg/s</div><div className="fact-value">{fmt(status.unseenVesselMetrics.rmseKgPerSecond,4)}</div></div><div><div className="fact-label">R²</div><div className="fact-value">{fmt(status.unseenVesselMetrics.r2,4)}</div></div></div>
+            {status.unseenVesselFolds&&<div className="table-wrap" style={{marginTop:12}}><table><thead><tr><th>Held-out vessel</th><th>Train / test</th><th>MAE · kg/s</th><th>RMSE · kg/s</th><th>R²</th></tr></thead><tbody>{status.unseenVesselFolds.map(fold=><tr key={fold.heldOutVessel}><td>{fold.heldOutVessel}</td><td>{fmt(fold.trainingObservations,0)} / {fmt(fold.testObservations,0)}</td><td>{fmt(fold.maeKgPerSecond,4)}</td><td>{fmt(fold.rmseKgPerSecond,4)}</td><td>{fmt(fold.r2,4)}</td></tr>)}</tbody></table></div>}
+          </Panel>}
+        </div>}
+        <div className="notice" style={{marginTop:13}}><strong>Physics baseline comparison: {status.physicsBaselineStatus}.</strong> {status.physicsBaselineReason}</div>
+        {status.limitations?.map((limitation,index)=><div className="helper" key={index} style={{marginTop:5}}>· {limitation}</div>)}
+      </>}
+    </Panel>
+  </div>;
+}
 function ResultView({result,scenario,onCsv}: {result:OptimizationResponse;scenario:OptimizeInput|null;onCsv:()=>void}) {
   const plan=result.recommendedPlan;
   const conv=result.benchmarkResults.flatMap(b=>b.convergence.map(c=>({algorithm:b.algorithm,...c})));
-  const maxCost=Math.max(...result.paretoFront.map(p=>p.totalCostUsd),1);
+  const maxCost=Math.max(...result.paretoFront.map(p=>p.totalCostInr),1);
   const maxEmissions=Math.max(...result.paretoFront.map(p=>p.wellToWakeKgCo2e),1);
   return <section style={{marginTop:20}} data-testid="content-optimization-results">
     <div className="page-heading" style={{marginBottom:12}}><div><div className="eyebrow">OPTIMIZER RESPONSE / TRACEABLE RESULT</div><h2 className="card-title" style={{fontSize:19}}>Comparison results · {result.vessel.name}</h2></div><div className="actions"><button className="btn small" onClick={onCsv} data-testid="button-export-csv"><ArrowDownToLine size={14}/> Export Pareto CSV</button><DownloadButton data={{scenario,sourceDetails:{vessel:{id:result.vessel.id,name:result.vessel.name,sourceName:result.vessel.sourceName,sourceUrl:result.vessel.sourceUrl}},results:result}} filename="voyage-optimization.json"/></div></div>
     {result.warnings.length>0&&<div className="notice" style={{marginBottom:13}}><strong>Optimizer warnings</strong><ul style={{margin:'5px 0 0',paddingLeft:18}}>{result.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
     <div className="result-hero">
       <div className="metric primary-metric"><div className="metric-label">Selected plan · {plan.fuelName}</div><div className="metric-value">{fmt(plan.speedKnots)}<span className="metric-unit">kn</span></div></div>
-      <div className="metric"><div className="metric-label">Total voyage cost</div><div className="metric-value">${fmt(plan.totalCostUsd,0)}</div></div>
+      <div className="metric"><div className="metric-label">Total voyage cost · ₹/voyage</div><div className="metric-value">₹{fmt(plan.totalCostInr,0)}</div></div>
+      <div className="metric"><div className="metric-label">Fuel rate · kg/s</div><div className="metric-value">{fmt(plan.fuelRateKgPerSecond,4)}</div></div>
       <div className="metric"><div className="metric-label">Well-to-wake</div><div className="metric-value">{fmt(plan.wellToWakeKgCo2e/1000)}<span className="metric-unit">tCO₂e</span></div></div>
       <div className="metric"><div className="metric-label">Duration</div><div className="metric-value">{fmt(plan.durationHours)}<span className="metric-unit">hours</span></div></div>
     </div>
+    <div className="assumption" style={{marginTop:10}}><Gauge size={15}/><span>Fuel estimate: <strong>{plan.fuelEstimator}</strong>. FuelCast rate is integrated over sailing time; fuel price, density and voyage constraints remain separate scenario inputs.</span></div>
     <div className="workspace-grid" style={{marginTop:15}}>
       <Panel title="Pareto comparison" caption="Non-dominated alternatives returned by the optimizer.">
-        {result.paretoFront.length===0?<div className="empty-state"><h3>No Pareto points returned</h3><p>The optimizer returned no comparison points for this scenario.</p></div>:<div className="table-wrap"><table data-testid="table-pareto"><thead><tr><th>Fuel / speed</th><th>Cost · USD</th><th>WTW · kg CO₂e</th><th>TTW · kg CO₂e</th><th>Duration · h</th><th>Fuel · t</th><th>Feasible</th></tr></thead><tbody>{result.paretoFront.map((p,i)=><tr key={`${p.fuelId}-${p.speedKnots}-${i}`} data-testid={`row-pareto-${i}`}><td><strong>{p.fuelName}</strong><div className="helper">{fmt(p.speedKnots)} kn · {fmt(p.engineLoadFraction*100)}% load</div></td><td className="mono">{fmt(p.totalCostUsd,0)}</td><td className="mono">{fmt(p.wellToWakeKgCo2e,0)}</td><td className="mono">{fmt(p.tankToWakeKgCo2e,0)}</td><td className="mono">{fmt(p.durationHours)}</td><td className="mono">{fmt(p.fuelMassTonnes,2)}</td><td><span className="pill">{p.feasible?'Feasible':'Infeasible'}</span></td></tr>)}</tbody></table></div>}
+        {result.paretoFront.length===0?<div className="empty-state"><h3>No Pareto points returned</h3><p>The optimizer returned no comparison points for this scenario.</p></div>:<div className="table-wrap"><table data-testid="table-pareto"><thead><tr><th>Fuel / speed</th><th>Cost · ₹/voyage</th><th>Rate · kg/s</th><th>WTW · kg CO₂e</th><th>TTW · kg CO₂e</th><th>Duration · h</th><th>Fuel · t</th><th>Feasible</th></tr></thead><tbody>{result.paretoFront.map((p,i)=><tr key={`${p.fuelId}-${p.speedKnots}-${i}`} data-testid={`row-pareto-${i}`}><td><strong>{p.fuelName}</strong><div className="helper">{fmt(p.speedKnots)} kn · {fmt(p.engineLoadFraction*100)}% load</div></td><td className="mono">{fmt(p.totalCostInr,0)}</td><td className="mono">{fmt(p.fuelRateKgPerSecond,4)}</td><td className="mono">{fmt(p.wellToWakeKgCo2e,0)}</td><td className="mono">{fmt(p.tankToWakeKgCo2e,0)}</td><td className="mono">{fmt(p.durationHours)}</td><td className="mono">{fmt(p.fuelMassTonnes,2)}</td><td><span className="pill">{p.feasible?'Feasible':'Infeasible'}</span></td></tr>)}</tbody></table></div>}
       </Panel>
       <div className="stack">
         <Panel title="Decision frontier" caption="Cost and lifecycle emissions for each returned option.">
-          {result.paretoFront.length ? <div className="bars">{result.paretoFront.map((p,i)=><div className="bar-row" key={i}><span>{p.fuelName} · {fmt(p.speedKnots)} kn</span><div><div className="bar-track" title={`Cost ${fmt(p.totalCostUsd,0)} USD`}><div className="bar-fill warm" style={{width:`${Math.max(2,p.totalCostUsd/maxCost*100)}%`}}/></div><div className="bar-track" style={{marginTop:5}} title={`Emissions ${fmt(p.wellToWakeKgCo2e,0)} kg`}><div className="bar-fill green" style={{width:`${Math.max(2,p.wellToWakeKgCo2e/maxEmissions*100)}%`}}/></div></div><span className="mono">{fmt(p.durationHours)} h</span></div>)}</div>:<div className="empty-state">No comparison data.</div>}
+          {result.paretoFront.length ? <div className="bars">{result.paretoFront.map((p,i)=><div className="bar-row" key={i}><span>{p.fuelName} · {fmt(p.speedKnots)} kn</span><div><div className="bar-track" title={`Cost ${fmt(p.totalCostInr,0)} ₹/voyage`}><div className="bar-fill warm" style={{width:`${Math.max(2,p.totalCostInr/maxCost*100)}%`}}/></div><div className="bar-track" style={{marginTop:5}} title={`Emissions ${fmt(p.wellToWakeKgCo2e,0)} kg`}><div className="bar-fill green" style={{width:`${Math.max(2,p.wellToWakeKgCo2e/maxEmissions*100)}%`}}/></div></div><span className="mono">{fmt(p.durationHours)} h</span></div>)}</div>:<div className="empty-state">No comparison data.</div>}
           <div className="helper" style={{marginTop:13}}>Amber = relative cost · green = relative well-to-wake emissions. Bars are scaled to returned points.</div>
         </Panel>
         <Panel title="Convergence" caption="Benchmark algorithm progress returned by the optimizer.">
-          {conv.length===0?<div className="empty-state"><h3>No convergence trace</h3><p>The response contains no iteration history.</p></div>:<div className="table-wrap"><table data-testid="table-convergence"><thead><tr><th>Algorithm</th><th>Iteration</th><th>Best cost · USD</th><th>Best WTW · kg</th><th>Best duration · h</th></tr></thead><tbody>{conv.map((c,i)=><tr key={`${c.algorithm}-${c.iteration}-${i}`}><td>{c.algorithm}</td><td className="mono">{c.iteration}</td><td className="mono">{fmt(c.bestCostUsd,0)}</td><td className="mono">{fmt(c.bestWellToWakeKgCo2e,0)}</td><td className="mono">{fmt(c.bestDurationHours)}</td></tr>)}</tbody></table></div>}
+          {conv.length===0?<div className="empty-state"><h3>No convergence trace</h3><p>The response contains no iteration history.</p></div>:<div className="table-wrap"><table data-testid="table-convergence"><thead><tr><th>Algorithm</th><th>Iteration</th><th>Best cost · ₹/voyage</th><th>Best WTW · kg</th><th>Best duration · h</th></tr></thead><tbody>{conv.map((c,i)=><tr key={`${c.algorithm}-${c.iteration}-${i}`}><td>{c.algorithm}</td><td className="mono">{c.iteration}</td><td className="mono">{fmt(c.bestCostInr,0)}</td><td className="mono">{fmt(c.bestWellToWakeKgCo2e,0)}</td><td className="mono">{fmt(c.bestDurationHours)}</td></tr>)}</tbody></table></div>}
         </Panel>
       </div>
     </div>
