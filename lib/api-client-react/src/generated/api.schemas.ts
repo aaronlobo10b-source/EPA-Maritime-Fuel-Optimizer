@@ -127,7 +127,7 @@ export type Vessel = VesselInput & {
 export interface FuelScenarioInput {
   fuelId: string;
   /** @minimum 0 */
-  bunkerPriceInrPerTonne: number;
+  bunkerPriceUsdPerTonne: number;
   /** @exclusiveMinimum 0 */
   densityKgPerM3: number;
   /** @minimum -10 */
@@ -186,13 +186,11 @@ export interface OptimizeInput {
   maxSpeedKnots: number;
   /** @exclusiveMinimum 0 */
   speedStepKnots: number;
-  /** @minimum 0 */
-  windSpeed10mMPerS: number;
   /**
      * @minimum 0
-     * @maximum 180
+     * @maximum 12
      */
-  windRelativeDirectionDeg: number;
+  windBeaufort: number;
   /** @minimum 0 */
   waveHeightM: number;
   /**
@@ -200,10 +198,6 @@ export interface OptimizeInput {
      * @maximum 180
      */
   waveRelativeDirectionDeg: number;
-  /** @minimum 0 */
-  wavePeriodSeconds: number;
-  /** @minimum 0 */
-  currentSpeedKnots: number;
   /**
      * @minimum -10
      * @maximum 10
@@ -214,14 +208,14 @@ export interface OptimizeInput {
   /** @exclusiveMinimum 0 */
   berthWindowEndHour: number;
   /** @minimum 0 */
-  carbonPriceInrPerTonne: number;
+  carbonPriceUsdPerTonne: number;
   /**
      * @minLength 2
      * @maxLength 300
      */
   carbonPriceSource: string;
   /** @minimum 0 */
-  portFeesInr: number;
+  portFeesUsd: number;
   /**
      * @minLength 2
      * @maxLength 300
@@ -244,7 +238,7 @@ export interface OptimizeInput {
 
 export interface ConvergencePoint {
   iteration: number;
-  bestCostInr: number;
+  bestCostUsd: number;
   bestWellToWakeKgCo2e: number;
   bestDurationHours: number;
 }
@@ -255,7 +249,7 @@ export interface ParetoPoint {
   speedKnots: number;
   fuelMassTonnes: number;
   fuelVolumeM3: number;
-  totalCostInr: number;
+  totalCostUsd: number;
   wellToWakeKgCo2e: number;
   tankToWakeKgCo2e: number;
   durationHours: number;
@@ -282,39 +276,6 @@ export type OptimizationResponsePhysics = {
   draftPowerFactor: number;
 };
 
-export type FuelCastEstimateStatus = typeof FuelCastEstimateStatus[keyof typeof FuelCastEstimateStatus];
-
-
-export const FuelCastEstimateStatus = {
-  predicted: 'predicted',
-  not_ready: 'not_ready',
-  unknown_vessel: 'unknown_vessel',
-  out_of_range: 'out_of_range',
-  unavailable: 'unavailable',
-} as const;
-
-export interface FuelCastEstimate {
-  status: FuelCastEstimateStatus;
-  reason: string;
-  /** @nullable */
-  datasetVessel: string | null;
-  /** @nullable */
-  modelName: string | null;
-  targetColumn: string;
-  targetUnit: string;
-  /** @nullable */
-  predictedRateKgPerSecond: number | null;
-  /** @nullable */
-  integratedMassKg: number | null;
-  /** @nullable */
-  integratedMassTonnes: number | null;
-  /** @nullable */
-  underwayDurationSeconds: number | null;
-  integrationAssumption: string;
-  fuelSpecific: boolean;
-  usedForOptimization: boolean;
-}
-
 export interface OptimizationResponse {
   vessel: Vessel;
   recommendedPlan: ParetoPoint;
@@ -322,65 +283,5 @@ export interface OptimizationResponse {
   paretoFront: ParetoPoint[];
   physics: OptimizationResponsePhysics;
   warnings: string[];
-  fuelCastEstimate: FuelCastEstimate;
-}
-
-export interface RegressionMetrics {
-  sampleCount: number;
-  maeKgPerSecond: number;
-  rmseKgPerSecond: number;
-  rSquared: number;
-  mapePositiveTargetsPercent: number;
-  mapePositiveTargetCount: number;
-}
-
-export interface VesselRegressionMetrics {
-  vesselName: string;
-  metrics: RegressionMetrics;
-}
-
-export type FuelCastStatusState = typeof FuelCastStatusState[keyof typeof FuelCastStatusState];
-
-
-export const FuelCastStatusState = {
-  training: 'training',
-  ready: 'ready',
-  unavailable: 'unavailable',
-} as const;
-
-export type FuelCastStatusVesselsItem = {
-  vesselName: string;
-  sourceRowCount: number;
-  trainingRowCount: number;
-  usableRowCount: number;
-};
-
-export interface FuelCastStatus {
-  state: FuelCastStatusState;
-  datasetName: string;
-  sourceUrl: string;
-  license: string;
-  sourceRowCount: number;
-  trainingRowCount: number;
-  excludedIncompleteRowCount: number;
-  timeBlockHoldoutRowCount: number;
-  vesselCount: number;
-  vessels: FuelCastStatusVesselsItem[];
-  featureColumns: string[];
-  targetColumn: string;
-  targetUnit: string;
-  /** @nullable */
-  modelName: string | null;
-  timeBlockValidation: RegressionMetrics | null;
-  timeBlockValidationByVessel: VesselRegressionMetrics[];
-  leaveOneVesselOutValidation: RegressionMetrics | null;
-  leaveOneVesselOutByVessel: VesselRegressionMetrics[];
-  timeBlockMethod: string;
-  mapeNote: string;
-  physicsComparisonStatus: string;
-  physicsComparisonReason: string;
-  localDataOnly: boolean;
-  modelWeightsPersisted: boolean;
-  unavailableReason: string;
 }
 

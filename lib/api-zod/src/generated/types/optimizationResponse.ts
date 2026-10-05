@@ -6,7 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BenchmarkResult } from './benchmarkResult';
-import type { FuelCastEstimate } from './fuelCastEstimate';
 import type { OptimizationResponsePhysics } from './optimizationResponsePhysics';
 import type { ParetoPoint } from './paretoPoint';
 import type { Vessel } from './vessel';
@@ -18,5 +17,4 @@ export interface OptimizationResponse {
   paretoFront: ParetoPoint[];
   physics: OptimizationResponsePhysics;
   warnings: string[];
-  fuelCastEstimate: FuelCastEstimate;
 }

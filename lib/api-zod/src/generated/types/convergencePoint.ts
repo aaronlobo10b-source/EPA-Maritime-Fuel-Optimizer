@@ -8,7 +8,7 @@
 
 export interface ConvergencePoint {
   iteration: number;
-  bestCostInr: number;
+  bestCostUsd: number;
   bestWellToWakeKgCo2e: number;
   bestDurationHours: number;
 }

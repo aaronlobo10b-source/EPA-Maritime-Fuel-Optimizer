@@ -12,7 +12,7 @@ export interface ParetoPoint {
   speedKnots: number;
   fuelMassTonnes: number;
   fuelVolumeM3: number;
-  totalCostInr: number;
+  totalCostUsd: number;
   wellToWakeKgCo2e: number;
   tankToWakeKgCo2e: number;
   durationHours: number;
