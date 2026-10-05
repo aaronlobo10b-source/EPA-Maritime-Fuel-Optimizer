@@ -38,6 +38,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MaritimeCatalog"
+  /maritime/fuelcast/status:
+    get:
+      operationId: getFuelcastStatus
+      tags: [maritime]
+      summary: Get FuelCast source, training, and validation status
+      responses:
+        "200":
+          description: FuelCast runtime status and held-out validation metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuelCastStatus"
   /maritime/vessels:
     get:
       operationId: listVessels
@@ -350,7 +362,7 @@ components:
       properties:
         fuelId:
           type: string
-        bunkerPriceUsdPerTonne:
+        bunkerPriceInrPerTonne:
           type: number
           minimum: 0
         densityKgPerM3:
@@ -381,7 +393,7 @@ components:
           type: boolean
       required:
         - fuelId
-        - bunkerPriceUsdPerTonne
+        - bunkerPriceInrPerTonne
         - densityKgPerM3
         - wellToTankKgCo2ePerKg
         - nonCo2TankToWakeKgCo2ePerKg
@@ -414,10 +426,13 @@ components:
         speedStepKnots:
           type: number
           exclusiveMinimum: 0
-        windBeaufort:
-          type: integer
+        windSpeed10mMPerS:
+          type: number
           minimum: 0
-          maximum: 12
+        windRelativeDirectionDeg:
+          type: number
+          minimum: 0
+          maximum: 180
         waveHeightM:
           type: number
           minimum: 0
@@ -425,6 +440,12 @@ components:
           type: number
           minimum: 0
           maximum: 180
+        wavePeriodSeconds:
+          type: number
+          minimum: 0
+        currentSpeedKnots:
+          type: number
+          minimum: 0
         currentAlongTrackKnots:
           type: number
           minimum: -10
@@ -435,14 +456,14 @@ components:
         berthWindowEndHour:
           type: number
           exclusiveMinimum: 0
-        carbonPriceUsdPerTonne:
+        carbonPriceInrPerTonne:
           type: number
           minimum: 0
         carbonPriceSource:
           type: string
           minLength: 2
           maxLength: 300
-        portFeesUsd:
+        portFeesInr:
           type: number
           minimum: 0
         portFeesSource:
@@ -472,15 +493,18 @@ components:
         - minSpeedKnots
         - maxSpeedKnots
         - speedStepKnots
-        - windBeaufort
+        - windSpeed10mMPerS
+        - windRelativeDirectionDeg
         - waveHeightM
         - waveRelativeDirectionDeg
+        - wavePeriodSeconds
+        - currentSpeedKnots
         - currentAlongTrackKnots
         - berthWindowStartHour
         - berthWindowEndHour
-        - carbonPriceUsdPerTonne
+        - carbonPriceInrPerTonne
         - carbonPriceSource
-        - portFeesUsd
+        - portFeesInr
         - portFeesSource
         - objectiveWeights
         - fuels
@@ -507,13 +531,13 @@ components:
       properties:
         iteration:
           type: integer
-        bestCostUsd:
+        bestCostInr:
           type: number
         bestWellToWakeKgCo2e:
           type: number
         bestDurationHours:
           type: number
-      required: [iteration, bestCostUsd, bestWellToWakeKgCo2e, bestDurationHours]
+      required: [iteration, bestCostInr, bestWellToWakeKgCo2e, bestDurationHours]
     ParetoPoint:
       type: object
       properties:
@@ -527,7 +551,7 @@ components:
           type: number
         fuelVolumeM3:
           type: number
-        totalCostUsd:
+        totalCostInr:
           type: number
         wellToWakeKgCo2e:
           type: number
@@ -545,7 +569,7 @@ components:
         - speedKnots
         - fuelMassTonnes
         - fuelVolumeM3
-        - totalCostUsd
+        - totalCostInr
         - wellToWakeKgCo2e
         - tankToWakeKgCo2e
         - durationHours
@@ -616,5 +640,140 @@ components:
           type: array
           items:
             type: string
-      required: [vessel, recommendedPlan, benchmarkResults, paretoFront, physics, warnings]
+        fuelCastEstimate:
+          $ref: "#/components/schemas/FuelCastEstimate"
+      required: [vessel, recommendedPlan, benchmarkResults, paretoFront, physics, warnings, fuelCastEstimate]
+    RegressionMetrics:
+      type: object
+      properties:
+        sampleCount:
+          type: integer
+        maeKgPerSecond:
+          type: number
+        rmseKgPerSecond:
+          type: number
+        rSquared:
+          type: number
+        mapePositiveTargetsPercent:
+          type: number
+        mapePositiveTargetCount:
+          type: integer
+      required: [sampleCount, maeKgPerSecond, rmseKgPerSecond, rSquared, mapePositiveTargetsPercent, mapePositiveTargetCount]
+    VesselRegressionMetrics:
+      type: object
+      properties:
+        vesselName:
+          type: string
+        metrics:
+          $ref: "#/components/schemas/RegressionMetrics"
+      required: [vesselName, metrics]
+    FuelCastStatus:
+      type: object
+      properties:
+        state:
+          type: string
+          enum: [training, ready, unavailable]
+        datasetName:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+        license:
+          type: string
+        sourceRowCount:
+          type: integer
+        trainingRowCount:
+          type: integer
+        excludedIncompleteRowCount:
+          type: integer
+        timeBlockHoldoutRowCount:
+          type: integer
+        vesselCount:
+          type: integer
+        vessels:
+          type: array
+          items:
+            type: object
+            properties:
+              vesselName:
+                type: string
+              sourceRowCount:
+                type: integer
+              trainingRowCount:
+                type: integer
+              usableRowCount:
+                type: integer
+            required: [vesselName, sourceRowCount, trainingRowCount, usableRowCount]
+        featureColumns:
+          type: array
+          items:
+            type: string
+        targetColumn:
+          type: string
+        targetUnit:
+          type: string
+        modelName:
+          type: ["string", "null"]
+        timeBlockValidation:
+          anyOf:
+            - $ref: "#/components/schemas/RegressionMetrics"
+            - type: "null"
+        timeBlockValidationByVessel:
+          type: array
+          items:
+            $ref: "#/components/schemas/VesselRegressionMetrics"
+        leaveOneVesselOutValidation:
+          anyOf:
+            - $ref: "#/components/schemas/RegressionMetrics"
+            - type: "null"
+        leaveOneVesselOutByVessel:
+          type: array
+          items:
+            $ref: "#/components/schemas/VesselRegressionMetrics"
+        timeBlockMethod:
+          type: string
+        mapeNote:
+          type: string
+        physicsComparisonStatus:
+          type: string
+        physicsComparisonReason:
+          type: string
+        localDataOnly:
+          type: boolean
+        modelWeightsPersisted:
+          type: boolean
+        unavailableReason:
+          type: string
+      required: [state, datasetName, sourceUrl, license, sourceRowCount, trainingRowCount, excludedIncompleteRowCount, timeBlockHoldoutRowCount, vesselCount, vessels, featureColumns, targetColumn, targetUnit, modelName, timeBlockValidation, timeBlockValidationByVessel, leaveOneVesselOutValidation, leaveOneVesselOutByVessel, timeBlockMethod, mapeNote, physicsComparisonStatus, physicsComparisonReason, localDataOnly, modelWeightsPersisted, unavailableReason]
+    FuelCastEstimate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [predicted, not_ready, unknown_vessel, out_of_range, unavailable]
+        reason:
+          type: string
+        datasetVessel:
+          type: ["string", "null"]
+        modelName:
+          type: ["string", "null"]
+        targetColumn:
+          type: string
+        targetUnit:
+          type: string
+        predictedRateKgPerSecond:
+          type: ["number", "null"]
+        integratedMassKg:
+          type: ["number", "null"]
+        integratedMassTonnes:
+          type: ["number", "null"]
+        underwayDurationSeconds:
+          type: ["number", "null"]
+        integrationAssumption:
+          type: string
+        fuelSpecific:
+          type: boolean
+        usedForOptimization:
+          type: boolean
+      required: [status, reason, datasetVessel, modelName, targetColumn, targetUnit, predictedRateKgPerSecond, integratedMassKg, integratedMassTonnes, underwayDurationSeconds, integrationAssumption, fuelSpecific, usedForOptimization]
 

@@ -10,6 +10,11 @@ out-tsc
 
 # dependencies
 node_modules
+.pythonlibs/
+.venv/
+
+# FuelCast is CC BY-NC-ND; keep downloaded source data local and untracked.
+/artifacts/api-server/local-data/
 
 # IDEs and editors
 /.idea

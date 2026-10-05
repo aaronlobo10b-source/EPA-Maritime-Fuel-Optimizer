@@ -22,11 +22,13 @@ export interface OptimizeInput {
   maxSpeedKnots: number;
   /** @exclusiveMinimum 0 */
   speedStepKnots: number;
+  /** @minimum 0 */
+  windSpeed10mMPerS: number;
   /**
      * @minimum 0
-     * @maximum 12
+     * @maximum 180
      */
-  windBeaufort: number;
+  windRelativeDirectionDeg: number;
   /** @minimum 0 */
   waveHeightM: number;
   /**
@@ -34,6 +36,10 @@ export interface OptimizeInput {
      * @maximum 180
      */
   waveRelativeDirectionDeg: number;
+  /** @minimum 0 */
+  wavePeriodSeconds: number;
+  /** @minimum 0 */
+  currentSpeedKnots: number;
   /**
      * @minimum -10
      * @maximum 10
@@ -44,14 +50,14 @@ export interface OptimizeInput {
   /** @exclusiveMinimum 0 */
   berthWindowEndHour: number;
   /** @minimum 0 */
-  carbonPriceUsdPerTonne: number;
+  carbonPriceInrPerTonne: number;
   /**
      * @minLength 2
      * @maxLength 300
      */
   carbonPriceSource: string;
   /** @minimum 0 */
-  portFeesUsd: number;
+  portFeesInr: number;
   /**
      * @minLength 2
      * @maxLength 300

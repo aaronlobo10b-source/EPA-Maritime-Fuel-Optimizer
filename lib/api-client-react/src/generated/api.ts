@@ -22,6 +22,7 @@ import type {
 import type {
   DeleteResult,
   Error,
+  FuelCastStatus,
   HealthStatus,
   MaritimeCatalog,
   OptimizationResponse,
@@ -200,6 +201,83 @@ export function useGetMaritimeCatalog<TData = Awaited<ReturnType<typeof getMarit
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMaritimeCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetFuelcastStatusUrl = () => {
+
+
+
+
+  return `/api/maritime/fuelcast/status`
+}
+
+/**
+ * @summary Get FuelCast source, training, and validation status
+ */
+export const getFuelcastStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<FuelCastStatus> => {
+
+  return customFetch<FuelCastStatus>(getGetFuelcastStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFuelcastStatusQueryKey = () => {
+    return [
+    `/api/maritime/fuelcast/status`
+    ] as const;
+    }
+
+
+export const getGetFuelcastStatusQueryOptions = <TData = Awaited<ReturnType<typeof getFuelcastStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFuelcastStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFuelcastStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFuelcastStatus>>> = ({ signal }) => getFuelcastStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFuelcastStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFuelcastStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getFuelcastStatus>>>
+export type GetFuelcastStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get FuelCast source, training, and validation status
+ */
+
+export function useGetFuelcastStatus<TData = Awaited<ReturnType<typeof getFuelcastStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFuelcastStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFuelcastStatusQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
